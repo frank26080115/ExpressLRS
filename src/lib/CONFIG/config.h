@@ -239,6 +239,7 @@ typedef struct __attribute__((packed)) {
 
     int8_t      locked_datarate;
     uint32_t    shrew_mixer;
+    uint16_t    shrew_failsafeswitch;
 
     uint8_t     targetSysId;
     uint8_t     sourceSysId;
@@ -282,6 +283,7 @@ public:
     bool IsOnLoan() const;
     int8_t GetLockedDatarate() const { return m_config.locked_datarate; };
     uint32_t GetShrewMixer() const { return m_config.shrew_mixer; };
+    uint16_t GetShrewFailsafeSwitch()  const { return m_config.shrew_failsafeswitch; }
 
     // Setters
     void SetUID(uint8_t* uid);
@@ -309,6 +311,7 @@ public:
     void SetBindStorage(rx_config_bindstorage_t value);
     void SetLockedDatarate(int8_t value);
     void SetShrewMixer(uint32_t value);
+    void SetShrewFailsafeSwitch(uint16_t value);
     void ReturnLoan();
 
 private:

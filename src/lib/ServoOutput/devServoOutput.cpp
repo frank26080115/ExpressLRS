@@ -50,6 +50,7 @@ extern volatile uint32_t shrew_hasBrownedOut;
 #endif
 
 extern void shrew_mix();
+extern bool shrew_failsafeSwitchIsOn();
 
 void ICACHE_RAM_ATTR servoNewChannelsAvailable()
 {
@@ -206,6 +207,11 @@ static void servosUpdate(unsigned long now)
         if (dshotArmOnConnect) {
             dshotArmingTime = millis();
             dshotArmOnConnect = false;
+        }
+
+        if (shrew_failsafeSwitchIsOn()) {
+            servosFailsafe();
+            return;
         }
 
         shrew_mix();

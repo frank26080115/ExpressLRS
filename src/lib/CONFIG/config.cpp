@@ -1278,6 +1278,15 @@ void RxConfig::SetShrewMixer(uint32_t value)
     }
 }
 
+void RxConfig::SetShrewFailsafeSwitch(uint16_t value)
+{
+    if (m_config.shrew_failsafeswitch != value)
+    {
+        m_config.shrew_failsafeswitch = value;
+        m_modified = true;
+    }
+}
+
 void RxConfig::SetTargetSysId(uint8_t value)
 {
     if (m_config.targetSysId != value)

@@ -44,6 +44,7 @@ typedef struct _options {
     int8_t      locked_datarate;
     uint8_t     shrew;
     uint32_t    shrew_mixer;
+    uint16_t    shrew_failsafeswitch;
 #endif
 #if defined(TARGET_TX) || defined(UNIT_TEST)
     uint32_t    tlm_report_interval;

@@ -411,6 +411,7 @@ static void GetConfiguration(AsyncWebServerRequest *request)
     json["config"]["vbind"] = config.GetBindStorage();
     json["config"]["fixed-packet-rate"] = config.GetLockedDatarate();
     json["config"]["shrew-mixer"] = config.GetShrewMixer();
+    json["config"]["shrew-failsafe-switch"] = config.GetShrewFailsafeSwitch();
     #if defined(GPIO_PIN_PWM_OUTPUTS)
     for (int ch=0; ch<GPIO_PIN_PWM_OUTPUTS_COUNT; ++ch)
     {
@@ -573,6 +574,7 @@ static void UpdateConfiguration(AsyncWebServerRequest *request, JsonVariant &jso
   config.SetBindStorage((rx_config_bindstorage_t)(json["vbind"] | 0));
   config.SetLockedDatarate(json["fixed-packet-rate"] | -1);
   config.SetShrewMixer(json["shrew-mixer"] | 0);
+  config.SetShrewFailsafeSwitch(json["shrew-failsafe-switch"] | 0);
   JsonUidToConfig(json);
 
   #if defined(GPIO_PIN_PWM_OUTPUTS)

@@ -361,6 +361,29 @@ function inline_loader_ondone() {
 								</tr>
 							</table>
 						</div>
+						<h2>Custom Arming Switch</h2>
+						<div>
+							<table class="mui-table">
+								<tr><td>Channel Select</td><td>
+									<select id="shrew-failsafe-switch-channel" name="shrew-failsafe-switch-channel">
+											<option value="0">None</option>
+											<option value="1">CH1</option>
+											<option value="2">CH2</option>
+											<option value="3">CH3</option>
+											<option value="4">CH4</option>
+											<option value="5">CH5</option>
+											<option value="6">CH6</option>
+											<option value="7">CH7</option>
+											<option value="8">CH8</option>
+											<option value="9">CH9</option>
+									</select>
+								</td></tr>
+								<tr><td><label for="shrew-failsafe-switch-pos-up">Armed when UP?</label></td><td><input type="checkbox" id="shrew-failsafe-switch-pos-up" name="shrew-failsafe-switch-pos-up" /></td></tr>
+								<tr><td><label for="shrew-failsafe-switch-pos-mid">Armed when MID?</label></td><td><input type="checkbox" id="shrew-failsafe-switch-pos-mid" name="shrew-failsafe-switch-pos-mid" /></td></tr>
+								<tr><td><label for="shrew-failsafe-switch-pos-down">Armed when DOWN?</label></td><td><input type="checkbox" id="shrew-failsafe-switch-pos-down" name="shrew-failsafe-switch-pos-down" /></td></tr>
+							</table>
+						</div>
+
 @@if hasHbridge:
 						<!-- <div>
 							<h2>Shrew H-Bridge Voltage</h2>

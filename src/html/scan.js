@@ -446,6 +446,17 @@ function updateConfig(data, options) {
   _('shrew-mixer-left-rev' ).checked = (rev_left  != 0);
   _('shrew-mixer-right-rev').checked = (rev_right != 0);
 
+  let failsafeswitch_settings = data["shrew-failsafe-switch"];
+  let failsafeswitch_ch = failsafeswitch_settings & 0xFF;
+  let failsafeswitch_pos = (failsafeswitch_settings & 0xFF00) >> 8;
+  let pos_up   = (failsafeswitch_pos & 0x04);
+  let pos_mid  = (failsafeswitch_pos & 0x02);
+  let pos_down = (failsafeswitch_pos & 0x01);
+  _('shrew-failsafe-switch-channel' ).value   = failsafeswitch_ch;
+  _('shrew-failsafe-switch-pos-up'  ).checked = (pos_up   != 0);
+  _('shrew-failsafe-switch-pos-mid' ).checked = (pos_mid  != 0);
+  _('shrew-failsafe-switch-pos-down').checked = (pos_down != 0);
+
   // set initial visibility status of Serial2 protocol selection
   _('serial1-config').style.display = 'none';
   data.pwm?.forEach((item,index) => {
@@ -791,6 +802,10 @@ if (_('config')) {
                 | (+_('shrew-mixer-left-rev').checked ? 0x10000 : 0)
                 | (+_('shrew-mixer-right-rev').checked ? 0x20000 : 0)
                 ,
+          "shrew-failsafe-switch": parseInt(+_('shrew-failsafe-switch-channel').value)
+                | (+_('shrew-failsafe-switch-pos-up'  ).checked ? 0x400 : 0)
+                | (+_('shrew-failsafe-switch-pos-mid' ).checked ? 0x200 : 0)
+                | (+_('shrew-failsafe-switch-pos-down').checked ? 0x100 : 0),
           "uid": _('uid').value.split(',').map(Number),
         });
       }, () => {
