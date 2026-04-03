@@ -37,6 +37,22 @@
                 "min_version": "3.5.0",
                 "platform": "esp32",
                 "firmware": "Unified_ShrewForXR2_2400_RX"
+            },
+            "shrewforrp4td": {
+                "product_name": "HSS RP4TD-M",
+                "lua_name": "RM RP4TD-M 2400 HSS",
+                "layout_file": "RP4TD.json",
+                "overlay": {
+                    "power_high": 0,
+                    "power_max": 0,
+                    "power_default": 0,
+                    "power_values": [13]
+                },
+                "upload_methods": ["uart", "wifi", "betaflight"],
+                "min_version": "3.0.0",
+                "platform": "esp32",
+                "firmware": "Unified_ESP32_2400_RX",
+                "prior_target_name": "Unified_ESP32_2400_RX"
             }
         },
         "tx_2400": {
@@ -2717,6 +2733,22 @@
                 "product_name": "RadioMaster RP4TD-M True Diversity 2.4GHz RX",
                 "lua_name": "RM RP4TD-M 2400",
                 "layout_file": "Generic 2400 True Diversity PA.json",
+                "overlay": {
+            "power_high": 0,
+            "power_max": 0,
+            "power_default": 0,
+                    "power_values": [13]
+                },
+                "upload_methods": ["uart", "wifi", "betaflight"],
+                "min_version": "3.0.0",
+                "platform": "esp32",
+                "firmware": "Unified_ESP32_2400_RX",
+                "prior_target_name": "Unified_ESP32_2400_RX"
+            },
+            "rp4m-hss": {
+                "product_name": "HSS RP4TD-M",
+                "lua_name": "RM RP4TD-M 2400 HSS",
+                "layout_file": "RP4TD.json",
                 "overlay": {
             "power_high": 0,
             "power_max": 0,
