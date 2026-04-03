@@ -368,7 +368,7 @@ static void initialize()
 
 static int start()
 {
-    #if defined(PLATFORM_ESP32)
+    #if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_GENERAL)
     if (shrew_reset_get_reason() == ESP_RST_BROWNOUT) {
         dshotArmOnConnect = true;
     }
