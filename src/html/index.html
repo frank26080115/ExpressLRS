@@ -298,8 +298,8 @@ function inline_loader_ondone() {
 							<label for="fixed-packet-rate">Packet Rate</label>
 						</div>
 						<h2>Arcade Tank Drive Mixer</h2>
-						<div>
-							<table class="mui-table">
+						<div class="mui-panel">
+							<table class="mui-table" style="border-collapse: collapse;">
 								<tr><th colspan="4" class="mui--text-center mui--text-title">Channel Select</td></tr>
 								<tr>
 									<th><label for="shrew-mixer-thr"  >Throttle</label></th>
@@ -362,9 +362,9 @@ function inline_loader_ondone() {
 							</table>
 						</div>
 						<h2>Custom Arming Switch</h2>
-						<div>
+						<div class="mui-panel">
 							<table class="mui-table">
-								<tr><td>Channel Select</td><td>
+								<tr><td style="width:1%; white-space:nowrap; text-align:right; padding-right:10px;">Channel Select</td><td>
 									<select id="shrew-failsafe-switch-channel" name="shrew-failsafe-switch-channel">
 											<option value="0">None</option>
 											<option value="1">CH1</option>
@@ -378,9 +378,9 @@ function inline_loader_ondone() {
 											<option value="9">CH9</option>
 									</select>
 								</td></tr>
-								<tr><td><label for="shrew-failsafe-switch-pos-up">Armed when UP?</label></td><td><input type="checkbox" id="shrew-failsafe-switch-pos-up" name="shrew-failsafe-switch-pos-up" /></td></tr>
-								<tr><td><label for="shrew-failsafe-switch-pos-mid">Armed when MID?</label></td><td><input type="checkbox" id="shrew-failsafe-switch-pos-mid" name="shrew-failsafe-switch-pos-mid" /></td></tr>
-								<tr><td><label for="shrew-failsafe-switch-pos-down">Armed when DOWN?</label></td><td><input type="checkbox" id="shrew-failsafe-switch-pos-down" name="shrew-failsafe-switch-pos-down" /></td></tr>
+								<tr><td style="width:1%; white-space:nowrap; text-align:right; padding-right:10px;"><label for="shrew-failsafe-switch-pos-up">Armed when UP?</label></td><td><input type="checkbox" id="shrew-failsafe-switch-pos-up" name="shrew-failsafe-switch-pos-up" /></td></tr>
+								<tr><td style="width:1%; white-space:nowrap; text-align:right; padding-right:10px;"><label for="shrew-failsafe-switch-pos-mid">Armed when MID?</label></td><td><input type="checkbox" id="shrew-failsafe-switch-pos-mid" name="shrew-failsafe-switch-pos-mid" /></td></tr>
+								<tr><td style="width:1%; white-space:nowrap; text-align:right; padding-right:10px;"><label for="shrew-failsafe-switch-pos-down">Armed when DOWN?</label></td><td><input type="checkbox" id="shrew-failsafe-switch-pos-down" name="shrew-failsafe-switch-pos-down" /></td></tr>
 							</table>
 						</div>
 
