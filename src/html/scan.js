@@ -87,7 +87,8 @@ function updatePwmSettings(arPwm) {
     const mode = (item.config >> 15) & 15; // 4 bits
     const stretch = (item.config >> 19) & 1;
     const features = item.features;
-    const modes = ['50Hz', '60Hz', '100Hz', '160Hz', '333Hz', '400Hz', '10KHzDuty', 'On/Off'];
+    const modes = ['50Hz', '100Hz', '160Hz', '333Hz', '400Hz', '10KHzDuty', 'On/Off'];
+    let can_vesc = false;
     if (features & 16) {
       modes.push('DShot');
       modes.push('DShot-3D');
@@ -100,6 +101,7 @@ function updatePwmSettings(arPwm) {
       modes.push(undefined);  // SCL
       modes.push(undefined);  // SDA
       modes.push(undefined);  // true PWM
+      can_vesc = true;
       pinRxIndex = index;
     } else if (features & 2) {
       modes.push('Serial RX');
@@ -119,7 +121,7 @@ function updatePwmSettings(arPwm) {
       } else {
         modes.push(undefined);
       }
-      modes.push(undefined);  // true PWM
+      //modes.push(undefined);  // true PWM
     }
 
     if (features & 32) {
@@ -129,7 +131,15 @@ function updatePwmSettings(arPwm) {
     }
     if (features & 64) {
       modes.push('Serial2 TX');
+      can_vesc = true;
     } else {
+      modes.push(undefined);
+    }
+
+    if (can_vesc) {
+      modes.push('VESC UART');
+    }
+    else {
       modes.push(undefined);
     }
 

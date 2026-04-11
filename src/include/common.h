@@ -188,7 +188,7 @@ typedef enum : uint8_t {
 enum eServoOutputMode : uint8_t
 {
     som50Hz = 0,    // 0:  50 Hz  | modes are "Servo PWM" where the signal is 988-2012us
-    som60Hz,        // 1:  60 Hz  | and the mode sets the refresh interval
+    //som60Hz,        // 1:  60 Hz  | and the mode sets the refresh interval
     som100Hz,       // 2:  100 Hz | must be mode=0 for default in config
     som160Hz,       // 3:  160Hz
     som333Hz,       // 4:  333Hz
@@ -200,11 +200,12 @@ enum eServoOutputMode : uint8_t
     somSerial,      // 10: primary Serial
     somSCL,         // 11: I2C clock signal
     somSDA,         // 12: I2C data line
-    somPwm,         // 13: true PWM mode (NOT SUPPORTED)
+    //somPwm,         // 13: true PWM mode (NOT SUPPORTED)
 #if defined(PLATFORM_ESP32)
     somSerial1RX,   // 14: secondary Serial RX
     somSerial1TX,   // 15: secondary Serial TX
 #endif
+    somVesc,        // VESC UART
 };
 
 enum eServoOutputFailsafeMode : uint8_t
@@ -223,7 +224,8 @@ enum eSerialProtocol : uint8_t
 	PROTOCOL_SUMD,
     PROTOCOL_DJI_RS_PRO,
     PROTOCOL_HOTT_TLM,
-    PROTOCOL_MAVLINK
+    PROTOCOL_MAVLINK,
+    PROTOCOL_VESC
 };
 
 #if defined(PLATFORM_ESP32)
@@ -239,6 +241,7 @@ enum eSerial1Protocol : uint8_t
     PROTOCOL_SERIAL1_HOTT_TLM,
     PROTOCOL_SERIAL1_TRAMP,
     PROTOCOL_SERIAL1_SMARTAUDIO,
+    PROTOCOL_SERIAL1_VESC
 };
 #endif
 

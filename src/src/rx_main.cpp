@@ -26,6 +26,7 @@
 #include "rx-serial/SerialMavlink.h"
 #include "rx-serial/SerialTramp.h"
 #include "rx-serial/SerialSmartAudio.h"
+#include "rx-serial/SerialVESC.h"
 
 #include "rx-serial/devSerialIO.h"
 #include "devLED.h"
@@ -1317,6 +1318,7 @@ static void setupSerial()
     bool sbusSerialOutput = false;
 	bool sumdSerialOutput = false;
     bool mavlinkSerialOutput = false;
+    bool vescSerialOutput = false;
 
 #if defined(PLATFORM_ESP8266) || defined(PLATFORM_ESP32)
     bool hottTlmSerial = false;
@@ -1366,6 +1368,12 @@ static void setupSerial()
         serialBaud = 19200;
     }
 #endif
+    else if (config.GetSerialProtocol() == PROTOCOL_VESC)
+    {
+        vescSerialOutput = true;
+        serialBaud = 115200;
+    }
+
     bool invert = config.GetSerialProtocol() == PROTOCOL_SBUS || config.GetSerialProtocol() == PROTOCOL_INVERTED_CRSF || config.GetSerialProtocol() == PROTOCOL_DJI_RS_PRO;
 
 #ifdef PLATFORM_STM32
@@ -1479,6 +1487,11 @@ static void setupSerial()
         serialIO = new SerialHoTT_TLM(SERIAL_PROTOCOL_TX, SERIAL_PROTOCOL_RX);
     }
     #endif
+    else if (vescSerialOutput)
+    {
+        serialIO = new SerialVESC(SERIAL_PROTOCOL_TX, SERIAL_PROTOCOL_RX);
+        ((SerialVESC*)serialIO)->begin(GPIO_PIN_RCSIGNAL_TX);
+    }
     else
     {
         serialIO = new SerialCRSF(SERIAL_PROTOCOL_TX, SERIAL_PROTOCOL_RX);
@@ -1529,7 +1542,8 @@ static void setupSerial1()
     {
         for (uint8_t ch = 0; ch < GPIO_PIN_PWM_OUTPUTS_COUNT; ch++)
         {
-            if (config.GetPwmChannel(ch)->val.mode == somSerial1TX)
+            if (config.GetPwmChannel(ch)->val.mode == somSerial1TX
+                || (config.GetPwmChannel(ch)->val.mode == somVesc && GPIO_PIN_PWM_OUTPUTS[ch] != GPIO_PIN_RCSIGNAL_TX))
                 serial1TXpin = GPIO_PIN_PWM_OUTPUTS[ch];
         }
     }
@@ -1570,6 +1584,11 @@ static void setupSerial1()
         case PROTOCOL_SERIAL1_SMARTAUDIO:
             Serial1.begin(4800, SERIAL_8N2, UNDEF_PIN, serial1TXpin, false);
             serial1IO = new SerialSmartAudio(SERIAL1_PROTOCOL_TX, SERIAL1_PROTOCOL_RX, serial1TXpin);
+            break;
+        case PROTOCOL_SERIAL1_VESC:
+            Serial1.begin(115200, SERIAL_8N1, UNDEF_PIN, serial1TXpin, false);
+            serial1IO = new SerialVESC(SERIAL1_PROTOCOL_TX, SERIAL1_PROTOCOL_RX);
+            ((SerialVESC*)serial1IO)->begin(serial1TXpin);
             break;
     }
 }

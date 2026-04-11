@@ -66,8 +66,8 @@ uint16_t servoOutputModeToFrequency(eServoOutputMode mode)
     {
     case som50Hz:
         return 50U;
-    case som60Hz:
-        return 60U;
+    //case som60Hz:
+    //    return 60U;
     case som100Hz:
         return 100U;
     case som160Hz:
