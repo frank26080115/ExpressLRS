@@ -20,6 +20,8 @@ void shrew_appendDefaults(RxConfig* cfg, rx_config_t* rxcfg)
     for (unsigned int ch = 0; ch < PWM_MAX_CHANNELS - 2; ch++)
     {
         rx_config_pwm_t *pwm = &(rxcfg->pwmChannels)[ch];
+        int8_t ch_pin = GPIO_PIN_PWM_OUTPUTS[ch];
+        (void)ch_pin;
         if (firmwareOptions.shrew != 0) { // if shrew is a brushed ESC, then the first two channels are already used for driving
             pwm->val.inputChannel += 2;
         }
@@ -33,6 +35,11 @@ void shrew_appendDefaults(RxConfig* cfg, rx_config_t* rxcfg)
         pwm->val.failsafe = 512;
         pwm->val.mode = somDShot3D;
         #endif
+        #ifdef BUILD_SHREW_VESC_UART
+        if (ch_pin == GPIO_PIN_RCSIGNAL_TX) {
+            pwm->val.mode = somVesc;
+        }
+        #endif
     }
     #endif
 
@@ -41,6 +48,10 @@ void shrew_appendDefaults(RxConfig* cfg, rx_config_t* rxcfg)
     if (firmwareOptions.permanent_binding) {
         rxcfg->bindStorage = BINDSTORAGE_PERMANENT;
     }
+
+    #ifdef BUILD_SHREW_VESC_UART
+    rxcfg->serialProtocol = PROTOCOL_VESC;
+    #endif
 }
 
 void shrew_cfgReset()

@@ -30,13 +30,13 @@ private:
     void processBytes(uint8_t *bytes, uint16_t size) override;
 };
 
-typedef struct
+typedef struct __attribute__((packed))
 {
     uint8_t start_byte; // magic, always 0x02
     uint8_t payload_length; // for this, always 5
     uint8_t command_byte;
     int32_t value;
-    uint32_t crc;
+    uint16_t crc;
     uint8_t stop_byte; // magic, always 0x03
 }
 vesc_i32_packet_t;

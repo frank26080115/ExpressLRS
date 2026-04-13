@@ -26,7 +26,7 @@
                 "layout_file": "ShrewForXR2.json",
                 "upload_methods": ["uart", "wifi"],
                 "min_version": "3.5.0",
-                "platform": "esp32",
+                "platform": "esp32-c3",
                 "firmware": "Unified_ShrewForXR2_2400_RX"
             },
             "shrewforxr2crsf": {
@@ -35,8 +35,17 @@
                 "layout_file": "ShrewForXR2_CRSF.json",
                 "upload_methods": ["uart", "wifi"],
                 "min_version": "3.5.0",
-                "platform": "esp32",
-                "firmware": "Unified_ShrewForXR2_2400_RX"
+                "platform": "esp32-c3",
+                "firmware": "Unified_ShrewForXR2_CRSF_2400_RX"
+            },
+            "shrewforxr2vesc": {
+                "product_name": "Shrew for XR2 (VESC)",
+                "lua_name": "Shrew-for-XR2-VESC",
+                "layout_file": "ShrewForXR2_VESC.json",
+                "upload_methods": ["uart", "wifi"],
+                "min_version": "3.5.0",
+                "platform": "esp32-c3",
+                "firmware": "Unified_ShrewForXR2_VESC_2400_RX"
             },
             "shrewforrp4td": {
                 "product_name": "HSS RP4TD-M",
@@ -53,6 +62,15 @@
                 "platform": "esp32",
                 "firmware": "Unified_ESP32_2400_RX",
                 "prior_target_name": "Unified_ESP32_2400_RX"
+            },
+            "shrewforer4vesc": {
+                "product_name": "Shrew for ER4 VESC",
+                "lua_name": "Shrew-for-ER4-VESC",
+                "layout_file": "ShrewForER4VESC.json",
+                "upload_methods": ["uart", "wifi"],
+                "min_version": "3.5.0",
+                "platform": "esp8285",
+                "firmware": "Unified_ShrewForER4VESC_2400_RX"
             }
         },
         "tx_2400": {

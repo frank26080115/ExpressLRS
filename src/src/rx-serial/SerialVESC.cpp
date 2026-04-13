@@ -8,8 +8,12 @@ constexpr unsigned SERVO_FAILSAFE_MIN = 988U;
 static unsigned short crc16(unsigned char *buf, unsigned int len);
 static int32_t i32map(int32_t x, int32_t in_min, int32_t in_max, int32_t out_min, int32_t out_max);
 
+int8_t vesc_pins_configured[2] = {-1, -1};
+
 void SerialVESC::begin(int8_t pin)
 {
+    DBGVLN("SerialVESC::begin %d", pin);
+
     this->pin = pin;
     // borrows configuration from the PWM pin table
     // this avoids having to have a dedicated selection for which channel is mapped to the VESC
@@ -18,15 +22,24 @@ void SerialVESC::begin(int8_t pin)
         const rx_config_pwm_t *chConfig = config.GetPwmChannel(ch);
         eServoOutputMode pinmode = ((eServoOutputMode)chConfig->val.mode);
         //auto frequency = servoOutputModeToFrequency((eServoOutputMode)chConfig->val.mode);
-        int8_t pin = GPIO_PIN_PWM_OUTPUTS[ch];
-        if ((pin == this->pin || this->pin < 0) && (pinmode == somVesc || pinmode == somSerial || pinmode == somSerial1TX))
+        int8_t ch_pin = GPIO_PIN_PWM_OUTPUTS[ch];
+        if ((ch_pin == this->pin || this->pin < 0) && (pinmode == somVesc || pinmode == somSerial
+            #if defined(PLATFORM_ESP32)
+             || pinmode == somSerial1TX
+            #endif
+            ))
         {
+            DBGLN("SerialVESC configed");
+
             this->configed = true;
             this->ch = chConfig->val.inputChannel;
             this->failsafe_mode = chConfig->val.failsafeMode;
             this->failsafe_val = fmap(chConfig->val.failsafe + SERVO_FAILSAFE_MIN, 1000, 2000, CRSF_CHANNEL_VALUE_MIN, CRSF_CHANNEL_VALUE_MAX);
             this->last_val = failsafe_val;
             break;
+        }
+        else {
+            DBGVLN("SerialVESC not right pin %d", ch_pin);
         }
     }
 }
@@ -124,5 +137,15 @@ static unsigned short crc16(unsigned char *buf, unsigned int len) {
 
 static int32_t i32map(int32_t x, int32_t in_min, int32_t in_max, int32_t out_min, int32_t out_max)
 {
-    return ((x - in_min) * (out_max - out_min) * 2 / (in_max - in_min) + out_min * 2 + 1) / 2;
+    int32_t in_range = in_max - in_min;
+
+    int32_t out_range = out_max - out_min;
+    int32_t dx = x - in_min;
+
+    // Split to avoid overflow: dx = q * in_range + r
+    int32_t q = dx / in_range;
+    int32_t r = dx % in_range;
+
+    // Combine safely
+    return out_min + q * out_range + (r * out_range) / in_range;
 }
