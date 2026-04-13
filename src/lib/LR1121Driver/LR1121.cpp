@@ -69,8 +69,8 @@ bool LR1121Driver::Begin(uint32_t minimumFrequency, uint32_t maximumFrequency)
     DBGLN("Read LR1121 #1 Use Case (0x03 = LR1121): %d", version[2]);
     if (version[2] != 0x03)
     {
-    DBGLN("LR1121 #1 failed to be detected.");
-        return false;
+        DBGLN("LR1121 #1 failed to be detected.");
+        //return false;
     }
     DBGLN("LR1121 #1 Ready");
 
