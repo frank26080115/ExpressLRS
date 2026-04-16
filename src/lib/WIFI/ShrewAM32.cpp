@@ -2,6 +2,7 @@
 #include "common.h"
 #include "config.h"
 
+#if defined(TARGET_RX)
 #if defined(BUILD_SHREW_AM32CONFIG)
 #if defined(PLATFORM_ESP32)
 
@@ -396,5 +397,7 @@ void am32_tick()
 }
 
 #endif // PLATFORM_ESP32
+
+#endif
 
 #endif

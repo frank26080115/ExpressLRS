@@ -1,5 +1,5 @@
 #ifdef BUILD_SHREW_HBRIDGE
-#if (defined(GPIO_PIN_PWM_OUTPUTS) && defined(PLATFORM_ESP32))
+#if (defined(GPIO_PIN_PWM_OUTPUTS) && defined(PLATFORM_ESP32)) && defined(TARGET_RX)
 
 #include "hbridge.h"
 #include "devServoOutput.h"
@@ -194,7 +194,7 @@ void hbridge_update(unsigned long now)
 #endif
 #endif
 
-#if defined(PLATFORM_ESP32)
+#if defined(PLATFORM_ESP32) && defined(TARGET_RX)
 extern bool dshotAllArmed;
 bool shrew_allArmed() {
     return dshotAllArmed

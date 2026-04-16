@@ -118,9 +118,11 @@ extern bool shrewvbat_canWifi();
 
 void setWifiUpdateMode()
 {
+  #ifdef TARGET_RX
   if (shrewvbat_canWifi() == false) {
     return;
   }
+  #endif
 
   // No need to ExitBindingMode(), the radio will be stopped stopped when start the Wifi service.
   // Need to change this before the mode change event so the LED is updated
@@ -1050,9 +1052,11 @@ static void initialize()
 
 static void startWiFi(unsigned long now)
 {
+  #ifdef TARGET_RX
   if (shrewvbat_canWifi() == false) {
     return;
   }
+  #endif
 
   if (wifiStarted) {
     return;
@@ -1260,7 +1264,7 @@ static void startServices()
 #ifdef BUILD_SHREW_WIFI
   shrew_setupServer(&server);
 #endif
-#ifdef BUILD_SHREW_AM32CONFIG
+#if defined(BUILD_SHREW_AM32CONFIG) && defined(TARGET_RX)
   am32_setupServer(&server);
 #endif
 
@@ -1464,13 +1468,15 @@ static int event()
 
 static int timeout()
 {
-  #ifdef BUILD_SHREW_AM32CONFIG
+  #if defined(BUILD_SHREW_AM32CONFIG) && defined(TARGET_RX)
   am32_tick();
   #endif
 
+  #ifdef TARGET_RX
   if (shrewvbat_canWifi() == false) {
     return DURATION_IMMEDIATELY;
   }
+  #endif
 
   if (wifiStarted)
   {

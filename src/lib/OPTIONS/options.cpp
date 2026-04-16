@@ -352,9 +352,12 @@ static void options_LoadFromFlashOrFile(EspFlashStream &strmFlash)
 
     firmwareOptions.permanent_binding = doc["permanent-binding"] | false;
     firmwareOptions.locked_datarate = doc["fixed-packet-rate"] | -1;
+
+    #ifdef TARGET_RX
     firmwareOptions.shrew = doc["shrew"] | 0;
     firmwareOptions.shrew_dshot = doc["shrew-dshot"] | false;
     firmwareOptions.shrew_mixer = doc["shrew-mixer"] | 0;
+    #endif
 
     builtinOptions.clear();
     saveOptions(builtinOptions, doc["customised"] | false);

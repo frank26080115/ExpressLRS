@@ -3,6 +3,8 @@
 #include "config.h"
 #include "crsf_protocol.h"
 
+#ifdef TARGET_RX
+
 uint32_t ChannelDataMixed[CRSF_NUM_CHANNELS];
 
 void shrew_mix()
@@ -38,3 +40,5 @@ void shrew_mix()
         ChannelDataMixed[ch_right - 1] = val_right;
     }
 }
+
+#endif

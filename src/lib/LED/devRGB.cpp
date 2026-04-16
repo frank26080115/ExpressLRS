@@ -559,12 +559,14 @@ void shrew_updateRgbLed()
         blinkyColor.v = 128;
         if (OPT_RGBLED_SHREWCYCLE) {
             blinkyColor.h = (accum / 32) & 0xFF;
+            #ifdef TARGET_RX
             if (shrew_allArmed() == false) {
                 if (((millis() / 200) % 2) == 0) {
                     blinkyColor.s = 32;
                     blinkyColor.v = 64;
                 }
             }
+            #endif
         }
         else {
             blinkyColor.h = ExpressLRS_currAirRate_Modparams->index * 256 / RATE_MAX;

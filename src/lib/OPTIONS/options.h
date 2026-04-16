@@ -32,6 +32,10 @@ typedef struct _options {
     char        home_wifi_ssid[33];
     char        home_wifi_password[65];
 #endif
+
+    bool        permanent_binding:1;
+    int8_t      locked_datarate;
+
 #if defined(TARGET_RX)
     uint32_t    uart_baud;
     bool        _unused1:1; // invert_tx
@@ -39,9 +43,7 @@ typedef struct _options {
     bool        _unused2:1; // r9mm_mini_sbus
     bool        is_airport:1;
 
-    bool        permanent_binding:1;
     bool        shrew_dshot:1;
-    int8_t      locked_datarate;
     uint8_t     shrew;
     uint32_t    shrew_mixer;
 #endif

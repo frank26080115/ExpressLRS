@@ -56,6 +56,15 @@
             }
         },
         "tx_2400": {
+            "shrew_tx": {
+                "product_name": "Shrew as TX",
+                "lua_name": "Shrew as TX",
+                "layout_file": "Shrew-TX.json",
+                "upload_methods": ["uart", "wifi"],
+                "min_version": "3.1.0",
+                "platform": "esp32",
+                "firmware": "Unified_ESP32_2400_TX"
+            },
             "shrew_wifi_esp32": {
                 "product_name": "Shrew Wifi ESP32 TX",
                 "lua_name": "Shrew TX",

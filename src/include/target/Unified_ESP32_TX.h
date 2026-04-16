@@ -132,6 +132,8 @@
 #define WS2812_BOOT_LEDS hardware_i16_array(HARDWARE_ledidx_rgb_boot)
 #define WS2812_BOOT_LEDS_COUNT hardware_int(HARDWARE_ledidx_rgb_boot_count)
 
+#define OPT_RGBLED_SHREWCYCLE hardware_flag(HARDWARE_led_rgb_shrewcycle)
+
 // OLED
 #define GPIO_PIN_OLED_CS hardware_pin(HARDWARE_screen_cs)        // SPI
 #define GPIO_PIN_OLED_DC hardware_pin(HARDWARE_screen_dc)        // SPI
