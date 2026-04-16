@@ -14,6 +14,7 @@
 #include "msp.h"
 #include "msptypes.h"
 #include "options.h"
+#include "OTA_Legacy.h"
 
 #include "rx-serial/SerialIO.h"
 #include "rx-serial/SerialNOOP.h"
@@ -369,6 +370,12 @@ void SetRFLinkRate(uint8_t index, bool bindMode) // Set speed of RF link
 
 static void ICACHE_RAM_ATTR HandleFHSS()
 {
+    if (ota_isLegacySyncHoldActive())
+    {
+        // During initial V3 lock acquisition we intentionally remain on sync channel.
+        return;
+    }
+
     uint8_t modresultFHSS = OtaNonce % ExpressLRS_currAirRate_Modparams->FHSShopInterval;
 
     if ((ExpressLRS_currAirRate_Modparams->FHSShopInterval == 0) || InBindingMode || (modresultFHSS != 0) || (connectionState == disconnected))
@@ -1631,6 +1638,12 @@ static void updateTelemetryBurst()
  */
 static void cycleRfMode(unsigned long now)
 {
+    if (ota_isLegacySyncHoldActive())
+    {
+        // Hold state: do not scan packet rates while waiting for legacy sync lock.
+        return;
+    }
+
     if (connectionState == connected || connectionState == wifiUpdate || InBindingMode)
         return;
 

@@ -39,6 +39,8 @@ and Gemini will not work, and any newer additions to OTA functionality will not 
 #define OTALEGACY_AP_MAX_BUF_LEN  64
 
 extern bool ota_isLegacy;
+extern uint32_t ota_legacySyncHoldUntilMs;
+extern bool ota_isLegacySyncHoldActive();
 extern uint32_t uidMacSeedGet_v3();
 extern void OtaUpdateCrcInitFromUid_v3();
 extern void ota_cntNewVersionPkts(); // call this when an non-legacy packet is validated

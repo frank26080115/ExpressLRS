@@ -16,6 +16,7 @@
 #endif
 
 bool ota_isLegacy = false;
+uint32_t ota_legacySyncHoldUntilMs = 0;
 extern uint8_t ExpressLRS_nextAirRateIndex; // used to call SetRFLinkRate
 extern uint32_t RFmodeLastCycled; // reset the scan timer
 extern bool OtaIsFullRes;
@@ -57,6 +58,23 @@ static void LinkStatsToOta_v3(OTA_LinkStats_v3_s * const ls);
 
 static void debug_sync_packet(void* pkt, int len);
 static void debug_generic_packet(uint8_t* data, int length, uint32_t crc_initializer);
+static constexpr uint32_t LEGACY_SYNC_HOLD_TIMEOUT_MS = 2000U;
+
+bool ota_isLegacySyncHoldActive()
+{
+    if (ota_legacySyncHoldUntilMs == 0)
+    {
+        return false;
+    }
+
+    if ((millis() - ota_legacySyncHoldUntilMs) < LEGACY_SYNC_HOLD_TIMEOUT_MS)
+    {
+        return true;
+    }
+
+    ota_legacySyncHoldUntilMs = 0;
+    return false;
+}
 
 bool ICACHE_RAM_ATTR ProcessRFPacket_v3(SX12xxDriverCommon::rx_status const status)
 {
@@ -90,15 +108,7 @@ bool ICACHE_RAM_ATTR ProcessRFPacket_v3(SX12xxDriverCommon::rx_status const stat
 
     consecutive_old_pkt_cnt++;
     consecutive_new_pkt_cnt = 0;
-    // Require several passes before mode switch. A matching sync packet is the strongest signal
-    // because it carries UID/model match information.
-    bool const syncPacketForThisReceiver = isMatchingSyncPacket_v3(otaPktPtr);
-
-    // If we receive a valid legacy sync packet for this receiver, switch immediately.
-    // This avoids waiting for additional packets while running with a mismatched hop table/seed,
-    // which can cause the receiver to lose the stream before thresholds are met.
-    bool const shouldSwitchToLegacyNow = syncPacketForThisReceiver || (consecutive_old_pkt_cnt >= 5U);
-    if (shouldSwitchToLegacyNow) { // got enough evidence to conclude we are hearing a V3 transmitter
+    if (consecutive_old_pkt_cnt >= 3U) { // got enough evidence to conclude we are hearing a V3 transmitter
         if (ota_isLegacy == false) {
             // time to switch over
             DBGLN("many legacy packets detected");
@@ -109,6 +119,15 @@ bool ICACHE_RAM_ATTR ProcessRFPacket_v3(SX12xxDriverCommon::rx_status const stat
             FHSSrandomiseFHSSsequence_v3(uidMacSeedGet_v3());
             // reinitialize the radio with the new config
             SetRFLinkRate(ExpressLRS_nextAirRateIndex, false);
+            // Enter a temporary hold state: stay on sync channel to lock quickly before hopping starts.
+            ota_legacySyncHoldUntilMs = millis();
+            Radio.SetFrequencyReg(FHSSgetInitialFreq(), SX12XX_Radio_1, false);
+#if defined(RADIO_LR1121)
+            if (FHSSuseDualBand)
+            {
+                Radio.SetFrequencyReg(FHSSgetInitialGeminiFreq(), SX12XX_Radio_2, false);
+            }
+#endif
             Radio.RXnb();
             // now we should be listening for sync on the correct sync channel since the hop table has been changed
             return false;
@@ -121,6 +140,13 @@ bool ICACHE_RAM_ATTR ProcessRFPacket_v3(SX12xxDriverCommon::rx_status const stat
         if (!mapSyncPacketV3ToV4(otaPktPtr))
         {
             return false;
+        }
+
+        // Sync found, leave the temporary hold state and allow normal hopping/scanning behaviour.
+        if (ota_legacySyncHoldUntilMs != 0)
+        {
+            DBGLN("legacy sync acquired, resume normal hopping");
+            ota_legacySyncHoldUntilMs = 0;
         }
     }
     else if (otaPktPtr->std.type == PACKET_TYPE_DATA)
