@@ -106,7 +106,7 @@ typedef struct {
                     packageIndex:(8 - OTALEGACY_ELRS4_TELEMETRY_SHIFT);
             union {
                 struct {
-                    OTA_LinkStats_s stats;
+                    OTA_LinkStats_v3_s stats;
                     uint8_t free;
                 } PACKED ul_link_stats;
                 uint8_t payload[OTALEGACY_ELRS4_TELEMETRY_BYTES_PER_CALL];
@@ -162,7 +162,7 @@ typedef struct {
                     packageIndex: 5;
             union {
                 struct {
-                    OTA_LinkStats_s stats;
+                    OTA_LinkStats_v3_s stats;
                     uint8_t payload[OTALEGACY_ELRS8_TELEMETRY_BYTES_PER_CALL - sizeof(OTA_LinkStats_v3_s)];
                 } PACKED ul_link_stats; // containsLinkStats == true
                 uint8_t payload[OTALEGACY_ELRS8_TELEMETRY_BYTES_PER_CALL]; // containsLinkStats == false
