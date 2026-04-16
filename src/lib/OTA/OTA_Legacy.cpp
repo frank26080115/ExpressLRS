@@ -93,8 +93,12 @@ bool ICACHE_RAM_ATTR ProcessRFPacket_v3(SX12xxDriverCommon::rx_status const stat
     // Require several passes before mode switch. A matching sync packet is the strongest signal
     // because it carries UID/model match information.
     bool const syncPacketForThisReceiver = isMatchingSyncPacket_v3(otaPktPtr);
-    uint32_t const packetsRequired = syncPacketForThisReceiver ? 2U : 5U;
-    if (consecutive_old_pkt_cnt >= packetsRequired) { // got enough packets passing CRC to think we might be hearing a transmitter running older firmware
+
+    // If we receive a valid legacy sync packet for this receiver, switch immediately.
+    // This avoids waiting for additional packets while running with a mismatched hop table/seed,
+    // which can cause the receiver to lose the stream before thresholds are met.
+    bool const shouldSwitchToLegacyNow = syncPacketForThisReceiver || (consecutive_old_pkt_cnt >= 5U);
+    if (shouldSwitchToLegacyNow) { // got enough evidence to conclude we are hearing a V3 transmitter
         if (ota_isLegacy == false) {
             // time to switch over
             DBGLN("many legacy packets detected");
