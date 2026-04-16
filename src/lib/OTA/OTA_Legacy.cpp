@@ -4,6 +4,7 @@
 #include "logging.h"
 #include "options.h"
 #include "config.h"
+#include "CRSFRouter.h"
 #include "stubborn_sender.h"
 #include "stubborn_receiver.h"
 #include "deferred.h"
@@ -419,13 +420,16 @@ static bool ICACHE_RAM_ATTR mapSyncPacketV3ToV4(OTA_Packet_v3_s * const otaPktPt
     syncV4.UID4 = syncV3->UID4;
     syncV4.UID5 = syncV3->UID5;
 
+    // Write the converted sync structure into the same RX buffer, but through the V4 packet view.
+    // ProcessRFPacket() is called later and interprets this memory as OTA_Packet_s.
+    OTA_Packet_s * const otaPktV4Ptr = (OTA_Packet_s * const)otaPktPtr;
     if (OtaIsFullRes)
     {
-        otaPktPtr->full.sync.sync = syncV4;
+        otaPktV4Ptr->full.sync.sync = syncV4;
     }
     else
     {
-        otaPktPtr->std.sync = syncV4;
+        otaPktV4Ptr->std.sync = syncV4;
     }
     return true;
 }
@@ -448,9 +452,11 @@ static void ICACHE_RAM_ATTR rewriteDataUplinkHeaderV3ToV4(OTA_Packet_v3_s * cons
     uint8_t const packageIndex = otaPktPtr->full.msp_ul.packageIndex;
     uint8_t const stubbornAck = otaPktPtr->full.msp_ul.tlmFlag;
 
-    otaPktPtr->full.data_ul.packetType = packetType;
-    otaPktPtr->full.data_ul.stubbornAck = stubbornAck;
-    otaPktPtr->full.data_ul.packageIndex = packageIndex;
+    // Re-interpret as V4 packet view and rewrite only the first byte fields needed by V4 parser.
+    OTA_Packet_s * const otaPktV4Ptr = (OTA_Packet_s * const)otaPktPtr;
+    otaPktV4Ptr->full.data_ul.packetType = packetType;
+    otaPktV4Ptr->full.data_ul.stubbornAck = stubbornAck;
+    otaPktV4Ptr->full.data_ul.packageIndex = packageIndex;
 
     DBGVLN("legacy full uplink hdr remap pidx=%u ack=%u", packageIndex, stubbornAck);
 }
