@@ -38,6 +38,7 @@ uint16_t OtaCrcInitializer_v3;
 
 bool ICACHE_RAM_ATTR ValidatePacketCrcFull_v3(OTA_Packet_v3_s * otaPktPtr);
 bool ICACHE_RAM_ATTR ValidatePacketCrcStd_v3(OTA_Packet_v3_s * otaPktPtr);
+void ICACHE_RAM_ATTR DebugPacketCrcStd_v3(OTA_Packet_v3_s * otaPktPtr);
 void ICACHE_RAM_ATTR GeneratePacketCrcFull_v3(OTA_Packet_v3_s * const otaPktPtr);
 void ICACHE_RAM_ATTR GeneratePacketCrcStd_v3(OTA_Packet_v3_s * const otaPktPtr);
 
@@ -311,8 +312,98 @@ bool ICACHE_RAM_ATTR ValidatePacketCrcFull_v3(OTA_Packet_v3_s * otaPktPtr)
     return false;
 }
 
+void ICACHE_RAM_ATTR DebugPacketCrcStd_v3(OTA_Packet_v3_s * otaPktPtr)
+{
+    static uint32_t lastDebugRunMs = 0;
+    uint32_t const nowMs = millis();
+
+    // Limit debug chatter so live packet processing remains usable while still
+    // providing snapshots that can be compared between branches.
+    if ((nowMs - lastDebugRunMs) <= 100U)
+    {
+        return;
+    }
+
+    lastDebugRunMs = nowMs;
+
+    // Keep UART output compact:
+    // p=packet bytes, t=type, s=switch mode, n=nonce, h=FHSS hop interval, i=incoming CRC
+    // l=CRC length, o=CRC initializer, c=calculated CRC, m=match(0/1)
+    // j=injected slot, k=slot in brute-force loop, r=result.
+    // Print packet bytes first so downstream values can be compared to raw data.
+    DBGV("p=");
+    for (uint8_t i = 0; i < sizeof(OTA_Packet4_v3_s); ++i)
+    {
+        DBGV("%x ", ((uint8_t*)otaPktPtr)[i]);
+    }
+    DBGVLN("");
+
+    uint8_t preserveCrcHigh = otaPktPtr->std.crcHigh;
+    uint16_t const inCRC = ((uint16_t)otaPktPtr->std.crcHigh << 8) + otaPktPtr->std.crcLow;
+    bool crcValid = false;
+
+    DBGVLN(" t=%u s=%u n=%u h=%u i=%x l=%u o=%x",
+        otaPktPtr->std.type, OtaSwitchModeCurrent, OtaNonce, ExpressLRS_currAirRate_Modparams->FHSShopInterval, inCRC, OTA4_CRC_CALC_LEN_v3, OtaCrcInitializer_v3);
+
+    // For smHybrid the CRC only has packet type in byte 0.
+    // For smWide standard RC packets, the FHSS slot is mixed into byte 0 before CRC.
+    // During initial acquisition (before sync), OtaNonce is unknown and using only one
+    // slot value causes many false negatives. To improve reliability, try all possible
+    // slot values for this mode.
+#if defined(TARGET_RX)
+    if (otaPktPtr->std.type == PACKET_TYPE_RCDATA && OtaSwitchModeCurrent == smWideOr8ch)
+    {
+        uint8_t const fhssHopInterval = ExpressLRS_currAirRate_Modparams->FHSShopInterval;
+        DBGVLN("w h=%u l=%u o=%x", fhssHopInterval, OTA4_CRC_CALC_LEN_v3, OtaCrcInitializer_v3);
+
+        if (fhssHopInterval > 0)
+        {
+            // First try the expected value from current OtaNonce (fast path when already in sync).
+            otaPktPtr->std.crcHigh = (OtaNonce % fhssHopInterval) + 1;
+            uint16_t const calculatedCRC = ota_crc_v3_short.calc((uint8_t*)otaPktPtr, OTA4_CRC_CALC_LEN_v3, OtaCrcInitializer_v3);
+            crcValid = (inCRC == calculatedCRC);
+            DBGVLN("f j=%u c=%x m=%u l=%u o=%x",
+                otaPktPtr->std.crcHigh, calculatedCRC, crcValid, OTA4_CRC_CALC_LEN_v3, OtaCrcInitializer_v3);
+
+            // If not matched, brute-force the slot contribution 1..FHSShopInterval.
+            if (!crcValid)
+            {
+                for (uint8_t slot = 1; slot <= fhssHopInterval; ++slot)
+                {
+                    otaPktPtr->std.crcHigh = slot;
+                    uint16_t const slotCrc = ota_crc_v3_short.calc((uint8_t*)otaPktPtr, OTA4_CRC_CALC_LEN_v3, OtaCrcInitializer_v3);
+                    DBGVLN("b k=%u c=%x m=%u l=%u o=%x", slot, slotCrc, (inCRC == slotCrc), OTA4_CRC_CALC_LEN_v3, OtaCrcInitializer_v3);
+                    if (inCRC == slotCrc)
+                    {
+                        crcValid = true;
+                        DBGVLN("g k=%u", slot);
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            DBGLN("z h=0");
+        }
+    }
+    else
+#endif
+    {
+        otaPktPtr->std.crcHigh = 0;
+        uint16_t const calculatedCRC = ota_crc_v3_short.calc((uint8_t*)otaPktPtr, OTA4_CRC_CALC_LEN_v3, OtaCrcInitializer_v3);
+        crcValid = (inCRC == calculatedCRC);
+        DBGVLN("q c=%x m=%u l=%u o=%x", calculatedCRC, crcValid, OTA4_CRC_CALC_LEN_v3, OtaCrcInitializer_v3);
+    }
+
+    otaPktPtr->std.crcHigh = preserveCrcHigh;
+    DBGVLN("e j=%x r=%u", otaPktPtr->std.crcHigh, crcValid);
+}
+
 bool ICACHE_RAM_ATTR ValidatePacketCrcStd_v3(OTA_Packet_v3_s * otaPktPtr)
 {
+    DebugPacketCrcStd_v3(otaPktPtr);
+
     uint8_t preserveCrcHigh = otaPktPtr->std.crcHigh;
     uint16_t const inCRC = ((uint16_t)otaPktPtr->std.crcHigh << 8) + otaPktPtr->std.crcLow;
     bool crcValid = false;

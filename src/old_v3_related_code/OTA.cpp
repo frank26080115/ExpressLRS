@@ -24,6 +24,8 @@ static Crc2Byte ota_crc;
 ValidatePacketCrc_t OtaValidatePacketCrc;
 GeneratePacketCrc_t OtaGeneratePacketCrc;
 
+void ICACHE_RAM_ATTR DebugPacketCrcStd_old(OTA_Packet_s * const otaPktPtr);
+
 void OtaUpdateCrcInitFromUid()
 {
     OtaCrcInitializer = (UID[4] << 8) | UID[5];
@@ -476,8 +478,64 @@ bool ICACHE_RAM_ATTR ValidatePacketCrcFull(OTA_Packet_s * const otaPktPtr)
     return otaPktPtr->full.crc == calculatedCRC;
 }
 
+void ICACHE_RAM_ATTR DebugPacketCrcStd_old(OTA_Packet_s * const otaPktPtr)
+{
+    static uint32_t lastDebugRunMs = 0;
+    uint32_t const nowMs = millis();
+
+    // Keep debug output periodic to avoid flooding serial logs and affecting timing.
+    if ((nowMs - lastDebugRunMs) <= 100U)
+    {
+        return;
+    }
+
+    lastDebugRunMs = nowMs;
+
+    // Keep UART output compact:
+    // p=packet bytes, t=type, s=switch mode, n=nonce, h=FHSS hop interval, i=incoming CRC
+    // l=CRC length, o=CRC initializer, c=calculated CRC, m=match(0/1)
+    // j=injected/restored crcHigh slot, r=result.
+    // Print packet bytes first so the trace aligns with v3 output ordering.
+    DBGV("p=");
+    for (uint8_t i = 0; i < sizeof(OTA_Packet4_s); ++i)
+    {
+        DBGV("%x ", ((uint8_t*)otaPktPtr)[i]);
+    }
+    DBGVLN("");
+
+    uint8_t backupCrcHigh = otaPktPtr->std.crcHigh;
+
+    uint16_t const inCRC = ((uint16_t)otaPktPtr->std.crcHigh << 8) + otaPktPtr->std.crcLow;
+    DBGVLN(" t=%u s=%u n=%u h=%u i=%x l=%u o=%x",
+        otaPktPtr->std.type, OtaSwitchModeCurrent, OtaNonce, ExpressLRS_currAirRate_Modparams->FHSShopInterval, inCRC, OTA4_CRC_CALC_LEN, OtaCrcInitializer);
+
+    // For smHybrid the CRC only has the packet type in byte 0
+    // For smWide the FHSS slot is added to the CRC in byte 0 on PACKET_TYPE_RCDATAs
+#if defined(TARGET_RX)
+    if (otaPktPtr->std.type == PACKET_TYPE_RCDATA && OtaSwitchModeCurrent == smWideOr8ch)
+    {
+        otaPktPtr->std.crcHigh = (OtaNonce % ExpressLRS_currAirRate_Modparams->FHSShopInterval) + 1;
+        DBGVLN("w j=%u l=%u o=%x", otaPktPtr->std.crcHigh, OTA4_CRC_CALC_LEN, OtaCrcInitializer);
+    }
+    else
+#endif
+    {
+        otaPktPtr->std.crcHigh = 0;
+        DBGVLN("q j=0 l=%u o=%x", OTA4_CRC_CALC_LEN, OtaCrcInitializer);
+    }
+    uint16_t const calculatedCRC =
+        ota_crc.calc((uint8_t*)otaPktPtr, OTA4_CRC_CALC_LEN, OtaCrcInitializer);
+
+    otaPktPtr->std.crcHigh = backupCrcHigh;
+
+    DBGVLN("e c=%x j=%x r=%u l=%u o=%x",
+        calculatedCRC, otaPktPtr->std.crcHigh, (inCRC == calculatedCRC), OTA4_CRC_CALC_LEN, OtaCrcInitializer);
+}
+
 bool ICACHE_RAM_ATTR ValidatePacketCrcStd(OTA_Packet_s * const otaPktPtr)
 {
+    DebugPacketCrcStd_old(otaPktPtr);
+
     uint8_t backupCrcHigh = otaPktPtr->std.crcHigh;
 
     uint16_t const inCRC = ((uint16_t)otaPktPtr->std.crcHigh << 8) + otaPktPtr->std.crcLow;
