@@ -394,20 +394,65 @@ static expresslrs_RFrates_e ICACHE_RAM_ATTR rateEnumXform_900(uint8_t x)
 }
 #endif
 
+#if defined(RADIO_SX127X)
+const static uint8_t rateXformTbl[RATE_MAX] = {
+    RATE_v3_LORA_200HZ,
+    RATE_v3_LORA_100HZ_8CH,
+    RATE_v3_LORA_100HZ,
+    RATE_v3_LORA_50HZ,
+    RATE_v3_LORA_25HZ,
+    RATE_v3_DVDA_50HZ,
+};
+
+#endif
+
+#if defined(RADIO_LR1121)
+const static uint8_t rateXformTbl[] = {
+    RATE_v3_LORA_200HZ,
+    RATE_v3_LORA_100HZ_8CH,
+    RATE_v3_LORA_100HZ,
+    RATE_v3_LORA_50HZ,
+    RATE_v3_LORA_500HZ,
+    RATE_v3_LORA_333HZ_8CH,
+    RATE_v3_LORA_250HZ,
+    RATE_v3_LORA_150HZ,
+    RATE_v3_LORA_100HZ_8CH,
+    RATE_v3_LORA_50HZ,
+    RATE_v3_LORA_150HZ,
+    RATE_v3_LORA_100HZ_8CH,
+    RATE_v3_LORA_250HZ,
+    RATE_v3_LORA_200HZ_8CH,
+    RATE_v3_FSK_2G4_DVDA_500HZ,
+    RATE_v3_FSK_900_1000HZ_8CH,
+};
+#endif
+
+#if defined(RADIO_SX128X)
+const uint8_t rateXformTbl[] = {
+    RATE_v3_FLRC_1000HZ,   
+    RATE_v3_FLRC_500HZ,    
+    RATE_v3_DVDA_500HZ,    
+    RATE_v3_DVDA_250HZ,    
+    RATE_v3_LORA_500HZ,    
+    RATE_v3_LORA_333HZ_8CH,
+    RATE_v3_LORA_250HZ,    
+    RATE_v3_LORA_150HZ,    
+    RATE_v3_LORA_100HZ_8CH,
+    RATE_v3_LORA_50HZ,      };
+#endif
+
 static uint8_t ICACHE_RAM_ATTR rateIdxXform(uint8_t x)
 {
-    // IMPORTANT: x is the V3 sync packet's rateIndex value (a V3 RF rate enum),
-    // not a V4 table index. Convert directly by enum value.
     #if defined(RADIO_SX127X)
-    return rateEnumXform_900(x);
+    return rateEnumXform_900(rateXformTbl[x]);
     #elif defined(RADIO_LR1121)
-    uint8_t ret = rateEnumXform_2G4(x);
+    uint8_t ret = rateEnumXform_2G4(rateXformTbl[x]);
     if (ret == 0xFF) {
-        ret = rateEnumXform_900(x);
+        ret = rateEnumXform_900(rateXformTbl[x]);
     }
     return ret;
     #elif defined(RADIO_SX128X)
-    return rateEnumXform_2G4(x);
+    return rateEnumXform_2G4(rateXformTbl[x]);
     #endif
 }
 
