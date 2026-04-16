@@ -51,6 +51,7 @@ static uint8_t rateIdxXform(uint8_t x);
 static void FHSSrandomiseFHSSsequence_v3(const uint32_t seed);
 static bool isMatchingSyncPacket_v3(const OTA_Packet_v3_s * const otaPktPtr);
 static bool mapSyncPacketV3ToV4(OTA_Packet_v3_s * const otaPktPtr);
+static void rewriteDataUplinkHeaderV3ToV4(OTA_Packet_v3_s * const otaPktPtr);
 static void LinkStatsToOta_v3(OTA_LinkStats_v3_s * const ls);
 
 static void debug_sync_packet(void* pkt, int len);
@@ -116,6 +117,12 @@ bool ICACHE_RAM_ATTR ProcessRFPacket_v3(SX12xxDriverCommon::rx_status const stat
         {
             return false;
         }
+    }
+    else if (otaPktPtr->std.type == PACKET_TYPE_DATA)
+    {
+        // PACKET_TYPE_DATA on V3 is MSP uplink. Standard-mode bit layout is compatible,
+        // but full-resolution bitfield order is different and must be translated.
+        rewriteDataUplinkHeaderV3ToV4(otaPktPtr);
     }
 
     #if defined(PLATFORM_ESP32)
@@ -356,71 +363,20 @@ static expresslrs_RFrates_e ICACHE_RAM_ATTR rateEnumXform_900(uint8_t x)
 }
 #endif
 
-#if defined(RADIO_SX127X)
-const static uint8_t rateXformTbl[RATE_MAX] = {
-    RATE_v3_LORA_200HZ,
-    RATE_v3_LORA_100HZ_8CH,
-    RATE_v3_LORA_100HZ,
-    RATE_v3_LORA_50HZ,
-    RATE_v3_LORA_25HZ,
-    RATE_v3_DVDA_50HZ,
-};
-
-#endif
-
-#if defined(RADIO_LR1121)
-const static uint8_t rateXformTbl[] = {
-    RATE_v3_LORA_200HZ,
-    RATE_v3_LORA_100HZ_8CH,
-    RATE_v3_LORA_100HZ,
-    RATE_v3_LORA_50HZ,
-    RATE_v3_LORA_500HZ,
-    RATE_v3_LORA_333HZ_8CH,
-    RATE_v3_LORA_250HZ,
-    RATE_v3_LORA_150HZ,
-    RATE_v3_LORA_100HZ_8CH,
-    RATE_v3_LORA_50HZ,
-    RATE_v3_LORA_150HZ,
-    RATE_v3_LORA_100HZ_8CH,
-    RATE_v3_LORA_250HZ,
-    RATE_v3_LORA_200HZ_8CH,
-    RATE_v3_FSK_2G4_DVDA_500HZ,
-    RATE_v3_FSK_900_1000HZ_8CH,
-};
-#endif
-
-#if defined(RADIO_SX128X)
-const uint8_t rateXformTbl[] = {
-    RATE_v3_FLRC_1000HZ,   
-    RATE_v3_FLRC_500HZ,    
-    RATE_v3_DVDA_500HZ,    
-    RATE_v3_DVDA_250HZ,    
-    RATE_v3_LORA_500HZ,    
-    RATE_v3_LORA_333HZ_8CH,
-    RATE_v3_LORA_250HZ,    
-    RATE_v3_LORA_150HZ,    
-    RATE_v3_LORA_100HZ_8CH,
-    RATE_v3_LORA_50HZ,      };
-#endif
-
 static uint8_t ICACHE_RAM_ATTR rateIdxXform(uint8_t x)
 {
-    uint8_t const maxRateIndex = sizeof(rateXformTbl) / sizeof(rateXformTbl[0]);
-    if (x >= maxRateIndex)
-    {
-        return 0xFF;
-    }
-
+    // IMPORTANT: x is the V3 sync packet's rateIndex value (a V3 RF rate enum),
+    // not a V4 table index. Convert directly by enum value.
     #if defined(RADIO_SX127X)
-    return rateEnumXform_900(rateXformTbl[x]);
+    return rateEnumXform_900(x);
     #elif defined(RADIO_LR1121)
-    uint8_t ret = rateEnumXform_2G4(rateXformTbl[x]);
+    uint8_t ret = rateEnumXform_2G4(x);
     if (ret == 0xFF) {
-        ret = rateEnumXform_900(rateXformTbl[x]);
+        ret = rateEnumXform_900(x);
     }
     return ret;
     #elif defined(RADIO_SX128X)
-    return rateEnumXform_2G4(rateXformTbl[x]);
+    return rateEnumXform_2G4(x);
     #endif
 }
 
@@ -450,6 +406,7 @@ static bool ICACHE_RAM_ATTR mapSyncPacketV3ToV4(OTA_Packet_v3_s * const otaPktPt
         DBGLN("legacy sync rate unsupported: %u", syncV3->rateIndex);
         return false;
     }
+    DBGLN("legacy sync rate map v3=%u v4=%u tlm=%u sw=%u", syncV3->rateIndex, transformedRateEnum, syncV3->newTlmRatio, syncV3->switchEncMode);
 
     syncV4.fhssIndex = syncV3->fhssIndex;
     syncV4.nonce = syncV3->nonce;
@@ -471,6 +428,31 @@ static bool ICACHE_RAM_ATTR mapSyncPacketV3ToV4(OTA_Packet_v3_s * const otaPktPt
         otaPktPtr->std.sync = syncV4;
     }
     return true;
+}
+
+static void ICACHE_RAM_ATTR rewriteDataUplinkHeaderV3ToV4(OTA_Packet_v3_s * const otaPktPtr)
+{
+    if (!OtaIsFullRes)
+    {
+        // Standard packet mode uses compatible bit placement:
+        // V3 msp_ul { packageIndex:7, tlmFlag:1 } and V4 data_ul { packageIndex:7, stubbornAck:1 }.
+        return;
+    }
+
+    // Full-res V3 uplink data layout:
+    //   packetType:2, packageIndex:5, tlmFlag:1
+    // Full-res V4 uplink data layout:
+    //   packetType:2, stubbornAck:1, packageIndex:5
+    // Repack byte 0 so ProcessRFPacket() sees correct V4 field positions.
+    uint8_t const packetType = otaPktPtr->full.msp_ul.packetType;
+    uint8_t const packageIndex = otaPktPtr->full.msp_ul.packageIndex;
+    uint8_t const stubbornAck = otaPktPtr->full.msp_ul.tlmFlag;
+
+    otaPktPtr->full.data_ul.packetType = packetType;
+    otaPktPtr->full.data_ul.stubbornAck = stubbornAck;
+    otaPktPtr->full.data_ul.packageIndex = packageIndex;
+
+    DBGVLN("legacy full uplink hdr remap pidx=%u ack=%u", packageIndex, stubbornAck);
 }
 
 static void ICACHE_RAM_ATTR LinkStatsToOta_v3(OTA_LinkStats_v3_s * const ls)
