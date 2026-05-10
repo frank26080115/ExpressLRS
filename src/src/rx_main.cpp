@@ -38,6 +38,9 @@
 #include "devRXLUA.h"
 #include "devServoOutput.h"
 #include "devWIFI.h"
+#if defined(RADIO_BLUEPAD32) && defined(PLATFORM_ESP32)
+#include "Bluepad32Class.h"
+#endif
 #include "RXEndpoint.h"
 #include "RXOTAConnector.h"
 #include "rx-serial/devSerialIO.h"
@@ -2162,6 +2165,10 @@ void loop()
 
     // read and process any data from serial ports, send any queued non-RC data
     handleSerialIO();
+
+    #if defined(RADIO_BLUEPAD32) && defined(PLATFORM_ESP32)
+    reinterpret_cast<Bluepad32Driver *>(&Radio)->Poll();
+    #endif
 
     // If the reboot time is set and the current time is past the reboot time then reboot.
     if (rebootTime != 0 && now > rebootTime) {

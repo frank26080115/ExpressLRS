@@ -9,6 +9,8 @@
 #define FreqCorrectionMax ((int32_t)(100000/FREQ_STEP)) // TODO - This needs checking !!!
 #elif defined(RADIO_SX128X)
 #define FreqCorrectionMax ((int32_t)(200000/FREQ_STEP))
+#elif defined(RADIO_BLUEPAD32)
+#define FreqCorrectionMax (1)
 #endif
 #define FreqCorrectionMin (-FreqCorrectionMax)
 

@@ -383,6 +383,7 @@ void ICACHE_RAM_ATTR GeneratePacketCrcStd_v3(OTA_Packet_v3_s * const otaPktPtr)
     otaPktPtr->std.crcLow  = crc;
 }
 
+#if defined(RADIO_LR1121) || defined(RADIO_SX128X)
 static expresslrs_RFrates_e ICACHE_RAM_ATTR rateEnumXform_2G4(uint8_t x)
 {
     switch(x)
@@ -406,6 +407,7 @@ static expresslrs_RFrates_e ICACHE_RAM_ATTR rateEnumXform_2G4(uint8_t x)
         default: return (expresslrs_RFrates_e)0xFF;
     }
 }
+#endif
 
 #if defined(RADIO_SX127X) || defined(RADIO_LR1121)
 static expresslrs_RFrates_e ICACHE_RAM_ATTR rateEnumXform_900(uint8_t x)
@@ -477,6 +479,12 @@ const uint8_t rateXformTbl[] = {
 };
 #endif
 
+#if defined(RADIO_BLUEPAD32)
+const uint8_t rateXformTbl[] = {
+    RATE_v3_LORA_50HZ,
+};
+#endif
+
 static uint8_t ICACHE_RAM_ATTR rateIdxXform(uint8_t x)
 {
     // Legacy rateIndex is translated through a target-specific lookup table first,
@@ -487,8 +495,10 @@ static uint8_t ICACHE_RAM_ATTR rateIdxXform(uint8_t x)
         return 0xFF;
     }
 
+    #if defined(RADIO_BLUEPAD32)
+    return RATE_LORA_2G4_50HZ;
+    #else
     uint8_t const rateV3 = rateXformTbl[x];
-
     #if defined(RADIO_SX127X)
     return rateEnumXform_900(rateV3);
     #elif defined(RADIO_LR1121)
@@ -499,6 +509,7 @@ static uint8_t ICACHE_RAM_ATTR rateIdxXform(uint8_t x)
     return ret;
     #elif defined(RADIO_SX128X)
     return rateEnumXform_2G4(rateV3);
+    #endif
     #endif
 }
 

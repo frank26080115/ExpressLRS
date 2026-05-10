@@ -12,6 +12,8 @@
 #include "LR1121Driver.h"
 #elif defined(RADIO_SX128X)
 #include "SX1280Driver.h"
+#elif defined(RADIO_BLUEPAD32)
+#include "Bluepad32Driver.h"
 #else
 #error "Radio configuration is not valid!"
 #endif
@@ -313,6 +315,14 @@ extern LR1121Driver Radio;
 #define RATE_BINDING RATE_LORA_2G4_50HZ
 
 extern SX1280Driver Radio;
+
+#elif defined(RADIO_BLUEPAD32)
+
+#define RATE_MAX 10                     // meaningless
+#define RATE_BINDING RATE_LORA_2G4_50HZ // meaningless
+
+extern Bluepad32Driver Radio;
+
 #endif
 #endif // UNIT_TEST
 

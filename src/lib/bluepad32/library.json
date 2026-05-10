@@ -1,0 +1,38 @@
+{
+  "name": "bluepad32",
+  "version": "4.1.0-shrew",
+  "build": {
+    "srcFilter": [
+      "+<*>",
+      "-<example_usage/>",
+      "-<include_replacer.py>",
+      "-<bluepad32/platform/uni_platform_mightymiggy.c>",
+      "-<bluepad32/platform/uni_platform_nina.c>",
+      "-<bluepad32/platform/uni_platform_unijoysticle*.c>",
+      "-<bluepad32_arduino/arduino_bootstrap.cpp>",
+      "-<btstack/btstack_audio_esp32_*.c>",
+      "-<btstack/es8388.c>",
+      "-<btstack/platform/embedded/hci_dump_embedded_stdout.c>",
+      "-<btstack/platform/lwip/>",
+      "-<btstack/src/btstack_audio.c>",
+      "-<btstack/src/btstack_lc3*.c>",
+      "-<btstack/src/btstack_resample.c>",
+      "-<btstack/src/btstack_sample_rate_compensation.c>",
+      "-<btstack/src/le-audio/>",
+      "-<btstack/src/mesh/>",
+      "-<btstack/src/classic/a2dp*.c>",
+      "-<btstack/src/classic/avdtp*.c>",
+      "-<btstack/src/classic/avrcp*.c>",
+      "-<btstack/src/classic/bnep.c>",
+      "-<btstack/src/classic/btstack_cvsd_plc.c>",
+      "-<btstack/src/classic/btstack_sbc*.c>",
+      "-<btstack/src/classic/goep*.c>",
+      "-<btstack/src/classic/hfp*.c>",
+      "-<btstack/src/classic/hsp*.c>",
+      "-<btstack/src/classic/obex*.c>",
+      "-<btstack/src/classic/pan.c>",
+      "-<btstack/src/classic/pbap*.c>",
+      "-<btstack/src/classic/spp_server.c>"
+    ]
+  }
+}
