@@ -205,6 +205,10 @@ void webbe_install(AsyncWebServer* srv)
     am32_setupServer(srv);
     #endif
 
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    bluepad_setupServer(srv);
+    #endif
+
     #ifdef BUILD_WEB_BACKEND_WEBSOCKET
     ws = new AsyncWebSocket("/ws");
     ws->onEvent(onWsEvent);

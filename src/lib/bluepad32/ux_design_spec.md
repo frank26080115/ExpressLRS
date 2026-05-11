@@ -55,7 +55,7 @@ The `START` button always makes channels go back to failsafe value
 
 The top of the page should have controls for activating and deactivating pairing.
 
-A list of paired keys is shown, it is updated every 3 seconds.
+A list of paired devices is shown as BD addresses, it is updated every 3 seconds (or upon expected change). Each one can be deleted individually.
 
 Then the next major section is the configuration editor
 
