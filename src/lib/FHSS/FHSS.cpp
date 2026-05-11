@@ -46,10 +46,6 @@ const fhss_config_t domains[] = {
     #endif
     FREQ_HZ_TO_REG_VAL(2400400000), FREQ_HZ_TO_REG_VAL(2479400000), 80, 2440000000}
 };
-#elif defined(RADIO_BLUEPAD32)
-const fhss_config_t domains[] = {
-    {"BLUEPAD32", 0, 1, 2, 0}
-};
 #endif
 
 // Our table of FHSS frequencies. Define a regulatory domain to select the correct set for your location and radio

@@ -44,6 +44,9 @@
 #include "config.h"
 #include "WebBackend.h"
 #include "CustomMixer.h"
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+#include "bluepad.h"
+#endif
 
 #if defined(RADIO_LR1121)
 #include "lr1121.h"
@@ -377,6 +380,11 @@ static void GetConfiguration(AsyncWebServerRequest *request)
     JsonObject mixerObj = cfg["custom-mixer"].to<JsonObject>();
     custom_mixer_to_json(config.GetCustomMixer(), mixerObj);
 
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    JsonObject bluepadObj = cfg["bluepad"].to<JsonObject>();
+    bluepad_config_to_json(config.GetBluepadConfig(), bluepadObj);
+    #endif
+
     cfg["fixed-packet-rate"] = config.GetFixedPacketRate();
 
     // save the 6x uint32_t numbers as an array to be passed to the web ui
@@ -654,6 +662,16 @@ static void UpdateConfiguration(AsyncWebServerRequest *request, JsonVariant &jso
       json_to_custom_mixer(mixerJson, &mixer);
       config.SetCustomMixer(&mixer);
   }
+
+  #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+  JsonObject bluepadJson = json["bluepad"].as<JsonObject>();
+  if (!bluepadJson.isNull())
+  {
+      bluepad_cfg_t bluepad = {};   // start clean
+      json_to_bluepad_config(bluepadJson, &bluepad);
+      config.SetBluepadConfig(&bluepad);
+  }
+  #endif
 
   config.Commit();
   request->send(200, "text/plain", "Configuration updated");

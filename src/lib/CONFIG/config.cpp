@@ -223,6 +223,12 @@ void TxConfig::Load()
             m_config.backpackTlmMode = value8;
     }
 
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    size_t bluepadSize = sizeof(m_config.bluepad);
+    if (nvs_get_blob(handle, "bluepad", &m_config.bluepad, &bluepadSize) != ESP_OK || bluepadSize != sizeof(m_config.bluepad))
+        m_modified |= EVENT_CONFIG_MAIN_CHANGED;
+    #endif
+
     for(unsigned i=0; i<CONFIG_TX_MODEL_CNT; i++)
     {
         char model[10] = "model";
@@ -441,6 +447,9 @@ TxConfig::Commit()
         nvs_set_u8(handle, "dvraux", m_config.dvrAux);
         nvs_set_u8(handle, "dvrstartdelay", m_config.dvrStartDelay);
         nvs_set_u8(handle, "dvrstopdelay", m_config.dvrStopDelay);
+        #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+        nvs_set_blob(handle, "bluepad", &m_config.bluepad, sizeof(m_config.bluepad));
+        #endif
     }
     if (m_modified & EVENT_CONFIG_BUTTON_CHANGED)
     {
@@ -696,6 +705,16 @@ TxConfig::SetButtonActions(uint8_t button, tx_button_color_t *action)
         m_modified |= EVENT_CONFIG_BUTTON_CHANGED;
     }
 }
+
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+void TxConfig::SetBluepadConfig(const bluepad_cfg_t* ptr)
+{
+    if (&(m_config.bluepad) != ptr) {
+        memcpy((void*)&(m_config.bluepad), (void*)ptr, sizeof(bluepad_cfg_t));
+    }
+    m_modified |= EVENT_CONFIG_MAIN_CHANGED;
+}
+#endif
 
 void
 TxConfig::SetPTRStartChannel(uint8_t ptrStartChannel)
@@ -1469,6 +1488,16 @@ void RxConfig::SetCustomMixer(const custom_mixer_t* ptr)
     }
     m_modified = EVENT_CONFIG_MODEL_CHANGED;
 }
+
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+void RxConfig::SetBluepadConfig(const bluepad_cfg_t* ptr)
+{
+    if (&(m_config.bluepad) != ptr) {
+        memcpy((void*)&(m_config.bluepad), (void*)ptr, sizeof(bluepad_cfg_t));
+    }
+    m_modified = EVENT_CONFIG_MODEL_CHANGED;
+}
+#endif
 
 void RxConfig::SetVescCfg(const uint32_t* ptr)
 {

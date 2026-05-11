@@ -8,6 +8,10 @@
 
 #include <driver/rmt.h>
 
+#if defined(BUILD_BLUEPAD32)
+#include "bluepad.h"
+#endif
+
 constexpr auto RMT_TICKS_PER_US = 4;
 
 void PPMHandset::Begin()
@@ -37,6 +41,12 @@ void PPMHandset::End()
 
 void PPMHandset::handleInput()
 {
+    #if defined(BUILD_BLUEPAD32)
+    if (bluepad32_has_recent_channel_data()) {
+        return;
+    }
+    #endif
+
     const auto now = millis();
     size_t length = 0;
     uint32_t localChannelData[CRSF_NUM_CHANNELS];

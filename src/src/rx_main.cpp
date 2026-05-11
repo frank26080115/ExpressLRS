@@ -38,8 +38,8 @@
 #include "devRXLUA.h"
 #include "devServoOutput.h"
 #include "devWIFI.h"
-#if defined(RADIO_BLUEPAD32) && defined(PLATFORM_ESP32)
-#include "Bluepad32Class.h"
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+#include "bluepad.h"
 #endif
 #include "RXEndpoint.h"
 #include "RXOTAConnector.h"
@@ -1230,6 +1230,10 @@ bool ICACHE_RAM_ATTR RXdoneISR(SX12xxDriverCommon::rx_status const status)
 
     if (success)
     {
+        #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+        bluepad32_rx_lora_packet_received();
+        #endif
+
         if (doStartTimer)
         {
             doStartTimer = false;
@@ -2136,6 +2140,10 @@ void setup()
             Radio.RXnb();
             hwTimer::init(HWtimerCallbackTick, HWtimerCallbackTock);
         }
+
+        #ifdef BUILD_BLUEPAD32
+        bluepad32_init();
+        #endif
     }
 
     registerButtonFunction(ACTION_BIND, EnterBindingModeSafely);
@@ -2166,8 +2174,8 @@ void loop()
     // read and process any data from serial ports, send any queued non-RC data
     handleSerialIO();
 
-    #if defined(RADIO_BLUEPAD32) && defined(PLATFORM_ESP32)
-    reinterpret_cast<Bluepad32Driver *>(&Radio)->Poll();
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    bluepad32_poll();
     #endif
 
     // If the reboot time is set and the current time is past the reboot time then reboot.

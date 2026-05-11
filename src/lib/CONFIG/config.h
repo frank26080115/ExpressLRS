@@ -11,6 +11,9 @@
 #endif
 
 #include "CustomMixer_types.h"
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+#include "bluepad_types.h"
+#endif
 
 // CONFIG_MAGIC is ORed with CONFIG_VERSION in the version field
 #define CONFIG_MAGIC_MASK   (0b11U << 30)
@@ -115,6 +118,10 @@ typedef struct {
     tx_button_color_t buttonColors[2];  // FUTURE: TX RGB color / mode (sets color of TX, can be a static color or standard)
                                         // FUTURE: Model RGB color / mode (sets LED color mode on the model, but can be second TX led color too)
                                         // FUTURE: Custom button actions
+
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    bluepad_cfg_t   bluepad;
+    #endif
 } tx_config_t;
 
 class TxConfig
@@ -151,6 +158,9 @@ public:
     model_config_t const &GetModelConfig(uint8_t model) const { return m_config.model_config[model]; }
     uint8_t GetPTRStartChannel() const { return m_model->ptrStartChannel; }
     uint8_t GetPTREnableChannel() const { return m_model->ptrEnableChannel; }
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    const bluepad_cfg_t* GetBluepadConfig() const { return &(m_config.bluepad); }
+#endif
 
     // Setters
     void SetRate(uint8_t rate);
@@ -179,6 +189,9 @@ public:
     void SetBackpackTlmMode(uint8_t mode);
     void SetPTRStartChannel(uint8_t ptrStartChannel);
     void SetPTREnableChannel(uint8_t ptrEnableChannel);
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    void SetBluepadConfig(const bluepad_cfg_t*);
+#endif
 
     // State setters
     bool SetModelId(uint8_t modelId);
@@ -267,6 +280,10 @@ typedef struct __attribute__((packed)) {
     custom_mixer_t custom_mixer;
     uint32_t vesc_cfg[6] __attribute__((aligned(4))); // 3x per VESC, so up to 6 needed, each uint32_t is actually a vesc_cfg_t
 
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    bluepad_cfg_t   bluepad;
+    #endif
+
 } rx_config_t;
 
 class RxConfig
@@ -309,6 +326,9 @@ public:
     const custom_mixer_t* GetCustomMixer() const { return &(m_config.custom_mixer); }
     const uint32_t* GetVescCfg() const { return (const uint32_t*)(m_config.vesc_cfg); }
     const uint8_t GetVescCfgExtras() const { return m_config.vescConfigExtras; }
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    const bluepad_cfg_t* GetBluepadConfig() const { return &(m_config.bluepad); }
+#endif
 
     // Setters
     void SetUID(uint8_t* uid);
@@ -339,6 +359,9 @@ public:
     void SetCustomMixer(const custom_mixer_t*);
     void SetVescCfg(const uint32_t*);
     void SetVescCfgExtras(uint8_t x);
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    void SetBluepadConfig(const bluepad_cfg_t*);
+#endif
 
 private:
     void CheckUpdateFlashedUid(bool skipDescrimCheck);

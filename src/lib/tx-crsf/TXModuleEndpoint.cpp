@@ -8,6 +8,10 @@
 #include "device.h"
 #include "config.h"
 
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+#include "bluepad.h"
+#endif
+
 #if defined(PLATFORM_ESP32)
 RTC_DATA_ATTR int rtcModelId = 0;
 #endif
@@ -151,6 +155,12 @@ void TXModuleEndpoint::RcPacketToChannelsData(const crsf_header_t *message) // d
         devicesTriggerEvent(EVENT_ARM_FLAG_CHANGED);
 #endif
     }
+
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    if (bluepad32_has_recent_channel_data()) {
+        return;
+    }
+    #endif
 
     handset->RCDataReceived(localChannelData, CRSF_NUM_CHANNELS);
 }

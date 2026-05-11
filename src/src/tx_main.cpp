@@ -29,6 +29,10 @@ void sendCRSFTelemetryToBackpack(uint8_t *) {}
 void sendMAVLinkTelemetryToBackpack(uint8_t *) {}
 #endif
 
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+#include "bluepad.h"
+#endif
+
 #include "CRSFParser.h"
 #include "CRSFRouter.h"
 #include "MAVLink.h"
@@ -522,6 +526,10 @@ void SetRFLinkRate(uint8_t index) // Set speed of RF link
 
 void ICACHE_RAM_ATTR SendRCdataToRF()
 {
+  #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+  bluepad32_apply_channel_data_if_recent();
+  #endif
+
   if (ota_isLegacy) {
     SendRCdataToRF_v3();
     return;
@@ -1523,6 +1531,10 @@ void setup()
     config.SetMotionMode(0); // Ensure motion detection is off
     UARTconnected();
   }
+
+  #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+  bluepad32_init();
+  #endif
 }
 
 void loop()
@@ -1557,6 +1569,14 @@ void loop()
   executeDeferredFunction(micros());
 
   HandleUARTin();
+
+  #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+  bluepad32_poll();
+  if (connectionState == noCrossfire && bluepad32_has_recent_channel_data())
+  {
+    UARTconnected();
+  }
+  #endif
 
   if (connectionState > MODE_STATES)
   {

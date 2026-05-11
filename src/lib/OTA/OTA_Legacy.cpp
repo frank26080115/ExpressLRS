@@ -479,12 +479,6 @@ const uint8_t rateXformTbl[] = {
 };
 #endif
 
-#if defined(RADIO_BLUEPAD32)
-const uint8_t rateXformTbl[] = {
-    RATE_v3_LORA_50HZ,
-};
-#endif
-
 static uint8_t ICACHE_RAM_ATTR rateIdxXform(uint8_t x)
 {
     // Legacy rateIndex is translated through a target-specific lookup table first,
@@ -495,9 +489,6 @@ static uint8_t ICACHE_RAM_ATTR rateIdxXform(uint8_t x)
         return 0xFF;
     }
 
-    #if defined(RADIO_BLUEPAD32)
-    return RATE_LORA_2G4_50HZ;
-    #else
     uint8_t const rateV3 = rateXformTbl[x];
     #if defined(RADIO_SX127X)
     return rateEnumXform_900(rateV3);
@@ -509,7 +500,6 @@ static uint8_t ICACHE_RAM_ATTR rateIdxXform(uint8_t x)
     return ret;
     #elif defined(RADIO_SX128X)
     return rateEnumXform_2G4(rateV3);
-    #endif
     #endif
 }
 
