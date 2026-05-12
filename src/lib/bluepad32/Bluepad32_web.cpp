@@ -80,7 +80,11 @@ static void bluepad_send_status(AsyncWebServerRequest* request, bool ok, const c
     JsonDocument doc;
     doc["ok"] = ok;
     doc["message"] = message;
-    doc["pairing"] = uni_bt_enable_new_connections_is_enabled();
+    bool pairingEnabled = false;
+    BLUEPAD_BTSTACK_DO_UNSAFE({
+        pairingEnabled = uni_bt_enable_new_connections_is_enabled();
+    });
+    doc["pairing"] = pairingEnabled;
     bluepad_send_json(request, doc, code);
 }
 
@@ -108,30 +112,35 @@ static bool bluepad_parse_bd_addr(const String& value, bd_addr_t address)
 
 static void bluepad_add_paired_devices(JsonArray devices)
 {
-    bd_addr_t address;
-    link_key_t linkKey;
-    link_key_type_t type;
-    btstack_link_key_iterator_t iterator;
+    BLUEPAD_BTSTACK_DO_UNSAFE({
+        bd_addr_t address;
+        link_key_t linkKey;
+        link_key_type_t type;
+        btstack_link_key_iterator_t iterator;
 
-    int ok = gap_link_key_iterator_init(&iterator);
-    if (!ok) {
-        return;
-    }
+        int ok = gap_link_key_iterator_init(&iterator);
+        if (ok) {
+            while (gap_link_key_iterator_get_next(&iterator, address, linkKey, &type)) {
+                JsonObject device = devices.add<JsonObject>();
+                device["address"] = bd_addr_to_str(address);
+                device["type"] = (uint8_t)type;
+            }
 
-    while (gap_link_key_iterator_get_next(&iterator, address, linkKey, &type)) {
-        JsonObject device = devices.add<JsonObject>();
-        device["address"] = bd_addr_to_str(address);
-        device["type"] = (uint8_t)type;
-    }
-
-    gap_link_key_iterator_done(&iterator);
+            gap_link_key_iterator_done(&iterator);
+        }
+    });
 }
 
 static void bluepad_handle_devices(AsyncWebServerRequest* request)
 {
+    bool pairingEnabled = false;
+    BLUEPAD_BTSTACK_DO_UNSAFE({
+        pairingEnabled = uni_bt_enable_new_connections_is_enabled();
+    });
+
     JsonDocument doc;
     doc["ok"] = true;
-    doc["pairing"] = uni_bt_enable_new_connections_is_enabled();
+    doc["pairing"] = pairingEnabled;
     JsonArray devices = doc["devices"].to<JsonArray>();
     bluepad_add_paired_devices(devices);
     bluepad_send_json(request, doc);
@@ -139,7 +148,9 @@ static void bluepad_handle_devices(AsyncWebServerRequest* request)
 
 static void bluepad_handle_pairing(AsyncWebServerRequest* request, bool enabled)
 {
-    BP32.enableNewBluetoothConnections(enabled); // this is thread safe, it queues up using btstack_run_loop_execute_on_main_thread internally
+    BLUEPAD_BTSTACK_DO_UNSAFE({
+        uni_bt_enable_new_connections_unsafe(enabled);
+    });
     bluepad_send_status(request, true, enabled ? "Pairing enabled" : "Pairing disabled");
 }
 
@@ -157,13 +168,17 @@ static void bluepad_handle_delete_device(AsyncWebServerRequest* request)
         return;
     }
 
-    gap_drop_link_key_for_bd_addr(address);
+    BLUEPAD_BTSTACK_DO_UNSAFE({
+        gap_drop_link_key_for_bd_addr(address);
+    });
     bluepad_send_status(request, true, "Paired device deleted");
 }
 
 static void bluepad_handle_delete_all_devices(AsyncWebServerRequest* request)
 {
-    BP32.forgetBluetoothKeys(); // this is thread safe, it queues up using btstack_run_loop_execute_on_main_thread internally
+    BLUEPAD_BTSTACK_DO_UNSAFE({
+        uni_bt_del_keys_unsafe();
+    });
     bluepad_send_status(request, true, "All paired devices deleted");
 }
 

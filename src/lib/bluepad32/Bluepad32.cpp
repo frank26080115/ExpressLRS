@@ -7,10 +7,13 @@
 
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <freertos/task.h>
 
 #include "ArduinoBluepad32.h"
 #include "arduino_platform.h"
+#include "bt/uni_bt.h"
+#include "bt/uni_bt_service.h"
 #include "btstack_port_esp32.h"
 #include "btstack_run_loop.h"
 #include "crsf_protocol.h"
@@ -18,6 +21,7 @@
 #include "device.h"
 #include "controller/uni_gamepad.h"
 #include "uni.h"
+#include "uni_virtual_device.h"
 #if defined(TARGET_TX)
 #include "handset.h"
 #endif
@@ -53,6 +57,12 @@ static const bluepad_cfg_t* bluepadConfig = nullptr;
 
 static uint16_t btn_was_pressed = 0; // bit flags
 
+SemaphoreHandle_t bluepadBtstackAccessMutex = nullptr;
+SemaphoreHandle_t bluepadBtstackRequestSignal = nullptr;
+SemaphoreHandle_t bluepadBtstackDoneSignal = nullptr;
+volatile bool bluepadBtstackHookReady = false;
+volatile bool bluepadBtstackRequestPending = false;
+
 #if defined(TARGET_RX)
 enum class bluepad32_rx_state_e : uint8_t
 {
@@ -70,6 +80,12 @@ extern void (*btstack_run_loop_freertos_execute_hook)(void);
 
 static void btstack_loop_hook()
 {
+    bluepadBtstackHookReady = true;
+    if (bluepadBtstackRequestPending) {
+        xSemaphoreGive(bluepadBtstackRequestSignal);
+        xSemaphoreTake(bluepadBtstackDoneSignal, portMAX_DELAY);
+    }
+
     #if 0
     if (bluepad32RxState == bluepad32_rx_state_e::loraOnly) {
         vTaskDelay(pdMS_TO_TICKS(5));
@@ -126,6 +142,22 @@ bool bluepad_init()
         return true;
     }
 
+    if (bluepadBtstackAccessMutex == nullptr) {
+        bluepadBtstackAccessMutex = xSemaphoreCreateMutex();
+    }
+    if (bluepadBtstackRequestSignal == nullptr) {
+        bluepadBtstackRequestSignal = xSemaphoreCreateBinary();
+    }
+    if (bluepadBtstackDoneSignal == nullptr) {
+        bluepadBtstackDoneSignal = xSemaphoreCreateBinary();
+    }
+
+    if (bluepadBtstackAccessMutex == nullptr || bluepadBtstackRequestSignal == nullptr ||
+        bluepadBtstackDoneSignal == nullptr)
+    {
+        return false;
+    }
+
     return xTaskCreatePinnedToCore(
         Bluepad32InitTask,
         "Bluepad32InitTask",
@@ -140,10 +172,16 @@ void bluepad_poll()
 {
     if (!hasSetup)
     {
+        if (!bluepadBtstackHookReady) {
+            return;
+        }
+
         hasSetup = true;
-        BP32.setup(&onConnectedController, &onDisconnectedController);
-        BP32.enableVirtualDevice(false);
-        BP32.enableBLEService(false);
+        BLUEPAD_BTSTACK_DO_UNSAFE({
+            BP32.setup(&onConnectedController, &onDisconnectedController);
+            uni_virtual_device_set_enabled(false); // BP32.enableVirtualDevice(false);
+            uni_bt_service_set_enabled(false);     // BP32.enableBLEService(false);
+        });
         lastControllerDataMillis = millis();
         bluepadConfig = config.GetBluepadConfig();
         loadBluepadFailsafeValues();
@@ -276,16 +314,17 @@ static void transitionToLoraOnly()
     }
 
     bluepad32RxState = bluepad32_rx_state_e::loraOnly;
-    BP32.enableNewBluetoothConnections(false);
-
-    for (auto &controller : myControllers)
-    {
-        if (controller != nullptr)
+    BLUEPAD_BTSTACK_DO_UNSAFE({
+        uni_bt_enable_new_connections_unsafe(false);
+        for (auto &controller : myControllers)
         {
-            controller->disconnect();
-            controller = nullptr;
+            if (controller != nullptr)
+            {
+                controller->disconnect();
+                controller = nullptr;
+            }
         }
-    }
+    });
 }
 
 static void transitionToBluetoothActive()
