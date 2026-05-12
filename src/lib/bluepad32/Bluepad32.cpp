@@ -24,6 +24,11 @@
 #endif
 
 extern uint32_t ChannelData[];
+int32_t ChannelDataShadow[2];
+#define CHANNEL_SHADOW_MULTIPLIER    1024
+
+static uint32_t failsafe_values[BP_AUX_CHANNEL_COUNT];
+
 #if defined(TARGET_RX)
 extern uint32_t LastSyncPacket;
 extern uint32_t LastValidPacket;
@@ -47,6 +52,8 @@ static ControllerPtr myControllers[BP32_MAX_GAMEPADS] = {};
 static uint32_t bluepadChannelData[BLUEPAD32_CRSF_NUM_CHANNELS] = {};
 static bool hasBluepadChannelData = false;
 static const bluepad_cfg_t* bluepadConfig = nullptr;
+
+static uint16_t btn_was_pressed = 0; // bit flags
 
 #if defined(TARGET_RX)
 enum class bluepad32_rx_state_e : uint8_t
@@ -77,6 +84,8 @@ static void restoreBluepadChannelData();
 #endif
 static bool hasRecentControllerData(uint32_t now);
 static void handleControllerData(uint32_t now);
+static void loadBluepadFailsafeValues();
+static void initializeBluepadAuxShadows();
 
 #if defined(TARGET_RX)
 static bool consumeLoraPacketReceived();
@@ -122,6 +131,8 @@ void bluepad32_poll()
         BP32.enableBLEService(false);
         lastControllerDataMillis = millis();
         bluepadConfig = config.GetBluepadConfig();
+        loadBluepadFailsafeValues();
+        initializeBluepadAuxShadows();
     }
 
     #if defined(TARGET_RX)
@@ -303,6 +314,20 @@ static void onConnectedController(ControllerPtr ctl)
             break;
         }
     }
+
+    uint8_t connectedCount = 0;
+    for (auto controller : myControllers)
+    {
+        if (controller != nullptr)
+        {
+            ++connectedCount;
+        }
+    }
+
+    if (connectedCount == 1)
+    {
+        btn_was_pressed = 0;
+    }
 }
 
 static void onDisconnectedController(ControllerPtr ctl)
@@ -317,14 +342,141 @@ static void onDisconnectedController(ControllerPtr ctl)
     }
 }
 
-static bool processGamepad(ControllerPtr ctl) {
+static int32_t getCtlValForButton(ControllerPtr ctl, uint8_t btn_enum)
+{
+    switch (btn_enum)
+    {
+        case BP_BUTTON_FACE_A:
+            return ctl->a();
+        case BP_BUTTON_FACE_B:
+            return ctl->b();
+        case BP_BUTTON_FACE_X:
+            return ctl->x();
+        case BP_BUTTON_FACE_Y:
+            return ctl->y();
+        case BP_BUTTON_DPAD_UP:
+            return (ctl->dpad() & DPAD_UP) != 0;
+        case BP_BUTTON_DPAD_DOWN:
+            return (ctl->dpad() & DPAD_DOWN) != 0;
+        case BP_BUTTON_DPAD_LEFT:
+            return (ctl->dpad() & DPAD_LEFT) != 0;
+        case BP_BUTTON_DPAD_RIGHT:
+            return (ctl->dpad() & DPAD_RIGHT) != 0;
+        case BP_BUTTON_L1:
+            return ctl->l1();
+        case BP_BUTTON_R1:
+            return ctl->r1();
+        default:
+            return 0;
+    }
+}
+
+static uint32_t usToCrsfValue(uint16_t us)
+{
+    us = constrain(us, US_CHANNEL_VALUE_STD_MIN, US_CHANNEL_VALUE_STD_MAX);
+    return fmap(us, US_CHANNEL_VALUE_STD_MIN, US_CHANNEL_VALUE_STD_MAX, CRSF_CHANNEL_VALUE_STD_MIN, CRSF_CHANNEL_VALUE_STD_MAX);
+}
+
+static int32_t usDeltaToCrsfDelta(uint16_t us)
+{
+    return ((int32_t)us * (CRSF_CHANNEL_VALUE_STD_MAX - CRSF_CHANNEL_VALUE_STD_MIN) +
+            ((US_CHANNEL_VALUE_STD_MAX - US_CHANNEL_VALUE_STD_MIN) / 2)) /
+           (US_CHANNEL_VALUE_STD_MAX - US_CHANNEL_VALUE_STD_MIN);
+}
+
+static int32_t crsfToShadow(uint32_t crsf)
+{
+    return (int32_t)crsf * CHANNEL_SHADOW_MULTIPLIER;
+}
+
+static int32_t clampShadow(int32_t value)
+{
+    const int32_t shadowMin = crsfToShadow(CRSF_CHANNEL_VALUE_STD_MIN);
+    const int32_t shadowMax = crsfToShadow(CRSF_CHANNEL_VALUE_STD_MAX);
+    return constrain(value, shadowMin, shadowMax);
+}
+
+static uint32_t shadowToCrsf(int32_t shadow)
+{
+    shadow = clampShadow(shadow);
+    return (shadow + (CHANNEL_SHADOW_MULTIPLIER / 2)) / CHANNEL_SHADOW_MULTIPLIER;
+}
+
+static void loadBluepadFailsafeValues()
+{
+    for (uint8_t aux_num = 0; aux_num < BP_AUX_CHANNEL_COUNT; ++aux_num)
+    {
+        failsafe_values[aux_num] = CRSF_CHANNEL_VALUE_UNSET;
+    }
+
+    if (!bluepadConfig)
+    {
+        return;
+    }
+
+    #if defined(TARGET_RX) && defined(GPIO_PIN_PWM_OUTPUTS)
+    for (uint8_t aux_num = 0; aux_num < BP_AUX_CHANNEL_COUNT; ++aux_num)
+    {
+        const bluepad_auxchan_cfg_t* auxConfig = &bluepadConfig->aux_mode[aux_num];
+        if (auxConfig->actual_channel == 0)
+        {
+            continue;
+        }
+
+        const uint8_t inputChannel = auxConfig->actual_channel - 1;
+        for (uint8_t pwmChannel = 0; pwmChannel < GPIO_PIN_PWM_OUTPUTS_COUNT; ++pwmChannel)
+        {
+            const rx_config_pwm_t* pwmConfig = config.GetPwmChannel(pwmChannel);
+            if (pwmConfig->val.inputChannel != inputChannel)
+            {
+                continue;
+            }
+
+            if (pwmConfig->val.failsafeMode == PWMFAILSAFE_SET_POSITION)
+            {
+                failsafe_values[aux_num] = usToCrsfValue(pwmConfig->val.failsafe + US_CHANNEL_VALUE_MIN);
+            }
+            break;
+        }
+    }
+    #elif defined(TARGET_TX)
+    for (uint8_t aux_num = 0; aux_num < BP_AUX_CHANNEL_COUNT; ++aux_num)
+    {
+        failsafe_values[aux_num] = usToCrsfValue(bluepadConfig->aux_mode[aux_num].failsafe);
+    }
+    #endif
+}
+
+static void initializeBluepadAuxShadows()
+{
+    for (uint8_t aux_num = 0; aux_num < BP_AUX_CHANNEL_COUNT; ++aux_num)
+    {
+        const uint32_t failsafe = failsafe_values[aux_num];
+        ChannelDataShadow[aux_num] = crsfToShadow(
+            failsafe == CRSF_CHANNEL_VALUE_UNSET ? CRSF_CHANNEL_VALUE_MID : failsafe);
+    }
+}
+
+static bool processGamepad(ControllerPtr ctl)
+{
+    uint32_t now = millis();
+    static uint32_t last_time = 0;
+    uint32_t dt = 1;
+    if (last_time != 0)
+    {
+        dt = now - last_time;
+    }
+    if (dt >= 50) {
+        dt = 50;
+    }
+    last_time = now;
+
     for (size_t i = 0; i < BLUEPAD32_CRSF_NUM_CHANNELS; ++i)
     {
         ChannelData[i] = CRSF_CHANNEL_VALUE_1000;
     }
 
-    // this is a placeholder implementation
-
+    // this is the basic default flat mapping
     ChannelData[0] = axisToCrsf(ctl->axisX(), false);
     ChannelData[1] = axisToCrsf(ctl->axisY(), true);
     ChannelData[2] = axisToCrsf(ctl->axisRX(), false);
@@ -341,6 +493,176 @@ static bool processGamepad(ControllerPtr ctl) {
     ChannelData[13] = buttonToCrsf(ctl->thumbR());
     ChannelData[14] = dpadToCrsfAxis(ctl->dpad(), DPAD_LEFT, DPAD_RIGHT);
     ChannelData[15] = dpadToCrsfAxis(ctl->dpad(), DPAD_DOWN, DPAD_UP);
+
+    if (!bluepadConfig) {
+        return false;
+    }
+
+    switch (bluepadConfig->main_mode)
+    {
+        case BP_MAINCTRL_BOTHSTICKSFULLAUTO:
+            {
+                int absLX = abs(ctl->axisX());
+                int absLY = abs(ctl->axisY());
+                int absRX = abs(ctl->axisRX());
+                int absRY = abs(ctl->axisRY());
+                ChannelData[0] = axisToCrsf(absLY >= absRY ? ctl->axisY() : ctl->axisRY(), true);
+                ChannelData[1] = axisToCrsf(absLX >= absRX ? ctl->axisX() : ctl->axisRX(), false);
+            }
+            break;
+        case BP_MAINCTRL_BOTHSTICKSDIRECTY:
+            ChannelData[0] = axisToCrsf(ctl->axisY(), true);
+            ChannelData[1] = axisToCrsf(ctl->axisRY(), true);
+            break;
+        case BP_MAINCTRL_LEFTSTICKONLY:
+            ChannelData[0] = axisToCrsf(ctl->axisY(), true);
+            ChannelData[1] = axisToCrsf(ctl->axisX(), false);
+            break;
+        case BP_MAINCTRL_RIGHTSTICKONLY:
+            ChannelData[0] = axisToCrsf(ctl->axisRY(), true);
+            ChannelData[1] = axisToCrsf(ctl->axisRX(), false);
+            break;
+        case BP_MAINCTRL_DPADONLY:
+            // treat the D-pad as if it was a stick
+            ChannelData[0] = dpadToCrsfAxis(ctl->dpad(), DPAD_DOWN, DPAD_UP);
+            ChannelData[1] = dpadToCrsfAxis(ctl->dpad(), DPAD_LEFT, DPAD_RIGHT);
+            break;
+        case BP_MAINCTRL_LEFTTHROTTLE_RIGHTSTEERING:
+            ChannelData[0] = axisToCrsf(ctl->axisY(), true);
+            ChannelData[1] = axisToCrsf(ctl->axisRX(), false);
+            break;
+        case BP_MAINCTRL_RIGHTTHROTTLE_LEFTSTEERING:
+            ChannelData[0] = axisToCrsf(ctl->axisRY(), true);
+            ChannelData[1] = axisToCrsf(ctl->axisX(), false);
+            break;
+        case BP_MAINCTRL_RACING_LEFTSTEERING:
+        case BP_MAINCTRL_RACING_RIGHTSTEERING:
+            {
+                // Throttle is the right trigger subtract the left trigger
+                // Steering is the X axis of the selected stick
+                int thr = ctl->throttle() - ctl->brake();
+                int str = (bluepadConfig->main_mode == BP_MAINCTRL_RACING_LEFTSTEERING) ? ctl->axisX() : ctl->axisRX();
+                ChannelData[0] = triggerDiffToCrsf(thr);
+                ChannelData[1] = axisToCrsf(str, false);
+            }
+            break;
+    }
+
+    for (uint8_t aux_num = 0; aux_num < 2; aux_num++)
+    {
+        const bluepad_auxchan_cfg_t* ap = &(bluepadConfig->aux_mode[aux_num]);
+        if (ap->actual_channel == 0) {
+            continue;
+        }
+        if (ap->analog_mode == BP_ANALOGCTRL_DONOTHING) {
+            continue;
+        }
+        switch (ap->analog_mode)
+        {
+            case BP_ANALOGCTRL_LEFTSTICK_Y_DIRECT:
+                ChannelDataShadow[aux_num] = crsfToShadow(axisToCrsf(ctl->axisY(), true));
+                break;
+            case BP_ANALOGCTRL_RIGHTSTICK_Y_DIRECT:
+                ChannelDataShadow[aux_num] = crsfToShadow(axisToCrsf(ctl->axisRY(), true));
+                break;
+            case BP_ANALOGCTRL_LEFTSTICK_Y_RELATIVE:
+                update_servo_shadow(&ChannelDataShadow[aux_num], ctl->axisY(), dt);
+                break;
+            case BP_ANALOGCTRL_RIGHTSTICK_Y_RELATIVE:
+                update_servo_shadow(&ChannelDataShadow[aux_num], ctl->axisRY(), dt);
+                break;
+            case BP_ANALOGCTRL_LEFTTRIGGER_DIRECT:
+                ChannelDataShadow[aux_num] = crsfToShadow(triggerToCrsf(ctl->brake()));
+                break;
+            case BP_ANALOGCTRL_RIGHTTRIGGER_DIRECT:
+                ChannelDataShadow[aux_num] = crsfToShadow(triggerToCrsf(ctl->throttle()));
+                break;
+            case BP_ANALOGCTRL_LEFTTRIGGER_LOWER_RIGHTTRIGGER_RAISE:
+            case BP_ANALOGCTRL_RIGHTTRIGGER_LOWER_LEFTTRIGGER_RAISE:
+                update_servo_shadow(&ChannelDataShadow[aux_num], (ctl->throttle() - ctl->brake()) * ((ap->analog_mode == BP_ANALOGCTRL_RIGHTTRIGGER_LOWER_LEFTTRIGGER_RAISE) ? 1 : -1), dt);
+                break;
+        }
+    }
+
+    bool has_hold[2] = {false};
+
+    for (uint8_t bi = 0; bi < BP_BUTTON_CONFIG_COUNT; bi++)
+    {
+        const bluepad_btn_cfg_t* bp = &(bluepadConfig->btn_mode[bi]);
+        if (bp->mode == BP_BUTTONCTRL_DONOTHING) {
+            continue;
+        }
+
+        uint8_t aux_num    = bp->aux_chan ? 1 : 0;
+        bool is_pressed    = getCtlValForButton(ctl, bi);
+        bool was_pressed   = (btn_was_pressed & (1 << bi)) != 0;
+        bool is_down_event =  is_pressed && !was_pressed;
+        bool is_up_event   = !is_pressed &&  was_pressed;
+        switch (bp->mode)
+        {
+            case BP_BUTTONCTRL_TAP2LATCH:
+                if (is_down_event) {
+                    ChannelDataShadow[aux_num] = crsfToShadow(usToCrsfValue(bp->value));
+                }
+                break;
+            case BP_BUTTONCTRL_HELD:
+                if (is_pressed) {
+                    ChannelDataShadow[aux_num] = crsfToShadow(usToCrsfValue(bp->value));
+                    has_hold[aux_num] = true;
+                }
+                else if (is_up_event && !has_hold[aux_num] && failsafe_values[aux_num] != CRSF_CHANNEL_VALUE_UNSET) {
+                    ChannelDataShadow[aux_num] = crsfToShadow(failsafe_values[aux_num]);
+                    // we do not support simultaneous multiple button holds assigned to the same channel
+                    // we do not support mixing holding and latched-tapping together
+                }
+                break;
+            case BP_BUTTONCTRL_INCREMENT:
+            case BP_BUTTONCTRL_DECREMENT:
+                if (is_down_event) {
+                    int32_t delta = usDeltaToCrsfDelta(bp->value) * CHANNEL_SHADOW_MULTIPLIER;
+                    if (bp->mode == BP_BUTTONCTRL_INCREMENT) {
+                        ChannelDataShadow[aux_num] += delta;
+                    }
+                    else if (bp->mode == BP_BUTTONCTRL_DECREMENT) {
+                        ChannelDataShadow[aux_num] -= delta;
+                    }
+                    ChannelDataShadow[aux_num] = clampShadow(ChannelDataShadow[aux_num]);
+                }
+                break;
+        }
+
+        // track press states so we can determine events
+        if (is_pressed) {
+            btn_was_pressed |= 1 << bi;
+        }
+        else {
+            btn_was_pressed &= ~(1 << bi);
+        }
+    }
+
+    const bool applyFailsafe = ctl->miscStart();
+
+    for (uint8_t aux_num = 0; aux_num < 2; aux_num++)
+    {
+        const bluepad_auxchan_cfg_t* ap = &(bluepadConfig->aux_mode[aux_num]);
+        if (ap->actual_channel == 0) {
+            continue;
+        }
+
+        if (applyFailsafe)
+        {
+            const uint32_t failsafe = failsafe_values[aux_num];
+            if (failsafe == CRSF_CHANNEL_VALUE_UNSET)
+            {
+                ChannelData[ap->actual_channel - 1] = CRSF_CHANNEL_VALUE_UNSET;
+                continue;
+            }
+
+            ChannelDataShadow[aux_num] = crsfToShadow(failsafe);
+        }
+
+        ChannelData[ap->actual_channel - 1] = shadowToCrsf(ChannelDataShadow[aux_num]);
+    }
 
     return true;
 }
