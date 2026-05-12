@@ -67,6 +67,17 @@ static void custommixer_arcadetankmix()
     int32_t val_y = ch_thr == 0 ? CRSF_CHANNEL_VALUE_MID : ChannelData[ch_thr - 1];
     int32_t val_x = ch_str == 0 ? CRSF_CHANNEL_VALUE_MID : ChannelData[ch_str - 1];
 
+    // pass unset values to output
+    if (val_y == CRSF_CHANNEL_VALUE_UNSET || val_x == CRSF_CHANNEL_VALUE_UNSET) {
+        if (ch_left != 0) {
+            ChannelDataMixed[ch_left  - 1] = CRSF_CHANNEL_VALUE_UNSET;
+        }
+        if (ch_right != 0) {
+            ChannelDataMixed[ch_right - 1] = CRSF_CHANNEL_VALUE_UNSET;
+        }
+        return;
+    }
+
     // 0 means center
     val_y -= CRSF_CHANNEL_VALUE_MID;
     val_x -= CRSF_CHANNEL_VALUE_MID;
@@ -135,6 +146,12 @@ static void custommixer_customarmswitch()
     armed_switch_armed = false;
 
     int32_t ch_val = ChannelDataMixed[sw_ch - 1];
+
+    if (ch_val == CRSF_CHANNEL_VALUE_UNSET) {
+        return;
+    }
+
+
     const int32_t CRSF_CHANNEL_VALUE_SPAN = (CRSF_CHANNEL_VALUE_MAX - CRSF_CHANNEL_VALUE_MIN);
     const int32_t CRSF_CHANNEL_VALUE_3RD  = (CRSF_CHANNEL_VALUE_SPAN / 3);
     if ((sw_pos & (1 << 0)) != 0) {
@@ -168,6 +185,13 @@ static void custommixer_mixaux()
         {
             ch -= 1; // the array is 0 indexed
             int32_t v = ChannelDataMixed[ch];
+
+            // pass on unset values directly
+            if (v == CRSF_CHANNEL_VALUE_UNSET) {
+                ChannelDataMixed[ch] = CRSF_CHANNEL_VALUE_UNSET;
+                continue;
+            }
+
             v = apply_deadzone (v, cfg->deadzone);
             v = apply_expo     (v, cfg->curve);
             v = apply_scale    (v, cfg->scale);

@@ -176,6 +176,12 @@ static void servoCalcAllChannels(servoWrite_fn write)
         // received yet. Delay initializing the servo until the channel is valid
         if (crsfVal == CRSF_CHANNEL_VALUE_UNSET)
         {
+            #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+            if (chConfig->val.failsafeMode == PWMFAILSAFE_NO_PULSES) {
+                write(ch, 0); // no pulse
+            }
+            #endif
+
             continue;
         }
 

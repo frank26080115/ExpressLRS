@@ -135,6 +135,10 @@ void hbridge_update(unsigned long now)
         ch2 = CRSF_CHANNEL_VALUE_MID;
     }
 
+    // handle unset values here, so as to not cause unwanted arming
+    ch1 = ch1 == CRSF_CHANNEL_VALUE_UNSET ? CRSF_CHANNEL_VALUE_MID : ch1;
+    ch2 = ch2 == CRSF_CHANNEL_VALUE_UNSET ? CRSF_CHANNEL_VALUE_MID : ch2;
+
     // note: setDuty expects duty 0-1000, internally it uses mcpwm_set_duty which accepts float 0-100, there's a divide by 10.0f internally
     // note: both pins H is means driver is in standby/hi-z
 

@@ -165,6 +165,11 @@ uint32_t SerialVESC::sendRCFrame(bool frameAvailable, bool frameMissed, uint32_t
         if (pcfg->cmd != COMM_SET_POS || pcfg->channel_y == 0)
         {
             int32_t cval = ChannelDataMixed[pcfg->channel_x - 1];
+
+            if (cval == CRSF_CHANNEL_VALUE_UNSET) {
+                continue;
+            }
+
             // we first check for specific inputs so that we are 100% certain that we are sending out a true zero, for safety reasons
             if (pcfg->cmd != COMM_SET_POS && pcfg->bidirectional && cval >= CRSF_CHANNEL_VALUE_MID - 1 && cval <= CRSF_CHANNEL_VALUE_MID + 1) {
                 val = 0;
@@ -186,8 +191,13 @@ uint32_t SerialVESC::sendRCFrame(bool frameAvailable, bool frameMissed, uint32_t
         }
         else
         {
+            if (ChannelDataMixed[pcfg->channel_x - 1] == CRSF_CHANNEL_VALUE_UNSET || ChannelDataMixed[pcfg->channel_y - 1] == CRSF_CHANNEL_VALUE_UNSET) {
+                continue;
+            }
+
             int16_t x = ChannelDataMixed[pcfg->channel_x - 1] - CRSF_CHANNEL_VALUE_MID;
             int16_t y = ChannelDataMixed[pcfg->channel_y - 1] - CRSF_CHANNEL_VALUE_MID;
+
             if (xy_magnitude(x, y) <= ((CRSF_CHANNEL_VALUE_MAX - CRSF_CHANNEL_VALUE_MIN) / 4)) { // must exceed deadzone to actually be considered valid
                 continue; // send nothing
             }
