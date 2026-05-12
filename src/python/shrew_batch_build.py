@@ -9,7 +9,9 @@ BUILD_TARGETS = [
     ["Unified_ESP8285_2400_RX_via_WIFI", ["er3", "er4", "er5", "er5c-i", "er5-v2", "rp1", "rp2"]],
     ["Unified_ESP32_2400_RX_via_WIFI", ["er6", "er8", "rp4", "rp4m"]],
     ["Unified_ESP32_2400_TX_via_WIFI", ["mt12", "boxer", "zorro", "pocket", "tx16s", "tx12", "ranger", "ranger-micro", "ranger-nano"]],
+    ["Unified_ESP32_Bluepad32_2400_TX_via_WIFI", ["mt12", "boxer", "zorro", "pocket", "tx16s", "tx12", "ranger", "ranger-micro", "ranger-nano"]],
     ["Unified_ESP32_LR1121_TX_via_WIFI", ["nomad", "gx12", "tx15"]],
+    ["Unified_ESP32_LR1121_Bluepad32_TX_via_WIFI", ["nomad", "gx12", "tx15"]],
     #["Unified_ESP32S3_2400_TX", ["t12-1w"]]
 ]
 
@@ -24,7 +26,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from UnifiedConfiguration import doConfiguration, findFirmwareEnd
+from UnifiedConfiguration import doConfiguration, findFirmwareEnd, hardwareFirmwareForTarget
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -120,7 +122,7 @@ def find_firmware(target):
 
 
 def target_firmware_name(target):
-    return re.sub(r"_via_(UART|WIFI)$", "", target)
+    return hardwareFirmwareForTarget(target)
 
 
 def find_hardware_config(target, hardware_name):
