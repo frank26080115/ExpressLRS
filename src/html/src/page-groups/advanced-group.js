@@ -1,6 +1,8 @@
 import '../pages/hardware-layout.js'
 import '../pages/custom-mixer-panel.js'
+// FEATURE:NOT IS_8285
 import '../pages/bluepad-panel.js'
+// /FEATURE:NOT IS_8285
 
 // FEATURE:NOT IS_TX
 // FEATURE:NOT IS_8285

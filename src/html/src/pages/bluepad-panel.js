@@ -1,7 +1,7 @@
 import {html, LitElement} from "lit";
 import {customElement, state} from "lit/decorators.js";
 import {elrsState, saveConfig} from "../utils/state.js";
-import {cuteAlert, errorAlert, postJSON} from "../utils/feedback.js";
+import {cuteAlert, post, showAlert} from "../utils/feedback.js";
 
 const BP_OCCUPANCY_LEFT_STICK = 1 << 0;
 const BP_OCCUPANCY_RIGHT_STICK = 1 << 1;
@@ -322,14 +322,14 @@ class BluepadPanel extends LitElement {
 
     setPairing(event, enabled) {
         event.preventDefault();
-        postJSON(enabled ? '/bluepad/pairing/enable' : '/bluepad/pairing/disable', {}, {
+        post(enabled ? '/bluepad/pairing/enable' : '/bluepad/pairing/disable', {}, {
             onload: (xhr) => {
                 this.applyDeviceResponse(xhr);
                 this.pairingEnabled = enabled;
                 this.getPairedDevices(true);
             },
             onerror: async (xhr) => {
-                await errorAlert('Bluepad32 Pairing', xhr.responseText || 'Pairing request failed');
+                await showAlert('error', 'Bluepad32 Pairing', xhr.responseText || 'Pairing request failed');
             },
         });
     }
@@ -347,13 +347,13 @@ class BluepadPanel extends LitElement {
             return;
         }
 
-        postJSON(`/bluepad/devices/delete?addr=${encodeURIComponent(address)}`, {}, {
+        post(`/bluepad/devices/delete?addr=${encodeURIComponent(address)}`, {}, {
             onload: (xhr) => {
                 this.applyDeviceResponse(xhr);
                 this.getPairedDevices(true);
             },
             onerror: async (xhr) => {
-                await errorAlert('Delete Paired Device', xhr.responseText || 'Delete request failed');
+                await showAlert('error', 'Delete Paired Device', xhr.responseText || 'Delete request failed');
             },
         });
     }
@@ -371,13 +371,13 @@ class BluepadPanel extends LitElement {
             return;
         }
 
-        postJSON('/bluepad/devices/delete-all', {}, {
+        post('/bluepad/devices/delete-all', {}, {
             onload: (xhr) => {
                 this.applyDeviceResponse(xhr);
                 this.getPairedDevices(true);
             },
             onerror: async (xhr) => {
-                await errorAlert('Forget All Devices', xhr.responseText || 'Forget request failed');
+                await showAlert('error', 'Forget All Devices', xhr.responseText || 'Forget request failed');
             },
         });
     }

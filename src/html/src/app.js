@@ -82,7 +82,7 @@ export class App extends LitElement {
                                 <li><a id="menu-custom-mixer" href="#custom-mixer"><span class="mui--align-middle icon--symbols icon--symbols--shuffle"></span>Custom Mixer</a></li>
                             ` : ''}
                             ${elrsState.config.bluepad !== undefined ? html`
-                                <li><a id="menu-bluepad" href="#bluepad"><span class="mui--align-middle icon--symbols icon--symbols--connections"></span>Bluepad32</a></li>
+                                <li><a id="menu-bluepad" href="#bluepad"><span class="mui--align-middle icon--symbols icon--symbols--gamepad"></span>Bluepad32</a></li>
                             ` : ''}
                             <!-- FEATURE:NOT IS_TX -->
                             ${elrsState.settings?.voltage_source_count > 0 ? html`

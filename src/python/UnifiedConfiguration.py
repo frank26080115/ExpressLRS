@@ -146,10 +146,16 @@ def is_pio_upload():
     except Exception:
         return False
 
+def hardwareFirmwareForTarget(target_name: str) -> str:
+    # Feature-marker target variants share the same hardware layouts as their
+    # base firmware target.
+    target_wo_method = re.sub('_via_.*', '', target_name)
+    return re.sub('_Bluepad32(?=_)', '', target_wo_method, flags=re.IGNORECASE)
+
 def interactiveProductSelect(targets: dict, target_name: str) -> dict:
     products = []
-    target_wo_method = re.sub('_via_.*', '', target_name)
-    for k in jmespath.search(f'*.*.*[][]|[?firmware==`{target_wo_method}`]', targets):
+    firmware_name = hardwareFirmwareForTarget(target_name)
+    for k in jmespath.search(f'*.*.*[][]|[?firmware==`{firmware_name}`]', targets):
         products.append(k)
 
     if len(products) == 0:
