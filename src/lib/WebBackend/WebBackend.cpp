@@ -20,6 +20,7 @@ bool webbe_ws_started = false;
 
 #ifdef BUILD_WEB_BACKEND_WEBSOCKET
 static AsyncWebSocket* ws;
+static AsyncWebSocketClient* wsLastClient = NULL;
 
 static constexpr uint8_t WS_CHANNEL_PACKET_HEADER = '>';
 static constexpr uint8_t WS_CHANNEL_PACKET_FOOTER = '#';
@@ -78,6 +79,7 @@ void onWsEvent(AsyncWebSocket *server,
         if (client != nullptr)
         {
             client->setCloseClientOnQueueFull(false);
+            wsLastClient = client;
         }
     }
     else if (type == WS_EVT_DATA)
@@ -147,6 +149,10 @@ void onWsEvent(AsyncWebSocket *server,
     {
         (void)server;
         resetWsChannelPacket();
+        if (wsLastClient == client)
+        {
+            wsLastClient = NULL;
+        }
         if (wsPendingAck && client != nullptr && wsPendingAckClientId == client->id())
         {
             wsPendingAck = false;
@@ -232,6 +238,32 @@ void webbe_install(AsyncWebServer* srv)
     #endif
 
     webbe_installed = true; // do not repeat
+}
+
+void webbe_sendStr(const char* s)
+{
+    #ifdef BUILD_WEB_BACKEND_WEBSOCKET
+    if (s == nullptr || ws == nullptr)
+    {
+        return;
+    }
+
+    if (ws->count() > 0)
+    {
+        if (ws->availableForWriteAll())
+        {
+            ws->textAll(s);
+        }
+        return;
+    }
+
+    if (wsLastClient != NULL && wsLastClient->status() == WS_CONNECTED && !wsLastClient->queueIsFull())
+    {
+        wsLastClient->text(s);
+    }
+    #else
+    UNUSED(s);
+    #endif
 }
 
 uint8_t webbe_getRandomWifiChannel()
