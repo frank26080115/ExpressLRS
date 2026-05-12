@@ -21,10 +21,10 @@ const OCCUPANCY_LABELS = [
     [BP_OCCUPANCY_DPAD, 'D-pad'],
     [BP_OCCUPANCY_LEFT_TRIGGER, 'left trigger'],
     [BP_OCCUPANCY_RIGHT_TRIGGER, 'right trigger'],
-    [BP_OCCUPANCY_FACE_A, 'A button'],
-    [BP_OCCUPANCY_FACE_B, 'B button'],
-    [BP_OCCUPANCY_FACE_X, 'X button'],
-    [BP_OCCUPANCY_FACE_Y, 'Y button'],
+    [BP_OCCUPANCY_FACE_A, 'A / Cross button'],
+    [BP_OCCUPANCY_FACE_B, 'B / Circle button'],
+    [BP_OCCUPANCY_FACE_X, 'X / Square button'],
+    [BP_OCCUPANCY_FACE_Y, 'Y / Triangle button'],
     [BP_OCCUPANCY_L1, 'L1 button'],
     [BP_OCCUPANCY_R1, 'R1 button'],
 ];
@@ -63,10 +63,10 @@ const BUTTON_MODE_OPTIONS = [
 ];
 
 const BUTTONS = [
-    {label: 'Face A', occupancy: BP_OCCUPANCY_FACE_A},
-    {label: 'Face B', occupancy: BP_OCCUPANCY_FACE_B},
-    {label: 'Face X', occupancy: BP_OCCUPANCY_FACE_X},
-    {label: 'Face Y', occupancy: BP_OCCUPANCY_FACE_Y},
+    {label: 'Face A / Cross', occupancy: BP_OCCUPANCY_FACE_A},
+    {label: 'Face B / Circle', occupancy: BP_OCCUPANCY_FACE_B},
+    {label: 'Face X / Square', occupancy: BP_OCCUPANCY_FACE_X},
+    {label: 'Face Y / Triangle', occupancy: BP_OCCUPANCY_FACE_Y},
     {label: 'D-pad Up', occupancy: BP_OCCUPANCY_DPAD},
     {label: 'D-pad Down', occupancy: BP_OCCUPANCY_DPAD},
     {label: 'D-pad Left', occupancy: BP_OCCUPANCY_DPAD},
@@ -119,7 +119,7 @@ class BluepadPanel extends LitElement {
             return html`
                 <div class="mui-panel mui--text-title">Bluepad32</div>
                 <div class="mui-panel">
-                    <p>This firmware does not expose Bluepad32 configuration.</p>
+                    <p>This firmware does not support Bluepad functionality.</p>
                 </div>
             `;
         }
