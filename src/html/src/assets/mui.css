@@ -2486,6 +2486,7 @@ h4, h5, h6 {
   left: 0;
   z-index: 99999999;
   background-color: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(1px);
   overflow: auto;
 }
 

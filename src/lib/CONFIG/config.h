@@ -4,6 +4,7 @@
 #include "elrs_eeprom.h"
 #include "options.h"
 #include "common.h"
+#include "OTA.h"
 
 #if defined(PLATFORM_ESP32)
 #include <nvs_flash.h>
@@ -23,6 +24,15 @@
 #define TX_CONFIG_VERSION   8U
 #define RX_CONFIG_VERSION   12U
 #define FIRMWARE_TRAILER_SIZE 4096U
+
+class BindphraseConfigurable
+{
+public:
+    virtual ~BindphraseConfigurable() = default;
+
+    virtual void SetUID(uint8_t uid[UID_LEN]) = 0;
+    void SetBindPhrase(uint8_t *phrase, size_t phraseLen);
+};
 
 #if defined(TARGET_TX)
 
@@ -124,10 +134,11 @@ typedef struct {
     #endif
 } tx_config_t;
 
-class TxConfig
+class TxConfig : public BindphraseConfigurable
 {
 public:
     TxConfig();
+    ~TxConfig() override = default;
     void Load();
     uint32_t Commit();
 
@@ -192,6 +203,7 @@ public:
 #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
     void SetBluepadConfig(const bluepad_cfg_t*);
 #endif
+    void SetUID(uint8_t uid[UID_LEN]) override;
 
     // State setters
     bool SetModelId(uint8_t modelId);
@@ -286,10 +298,11 @@ typedef struct __attribute__((packed)) {
 
 } rx_config_t;
 
-class RxConfig
+class RxConfig : public BindphraseConfigurable
 {
 public:
     RxConfig();
+    ~RxConfig() override = default;
 
     void Load();
     uint32_t Commit();
@@ -331,7 +344,7 @@ public:
 #endif
 
     // Setters
-    void SetUID(uint8_t* uid);
+    void SetUID(uint8_t uid[UID_LEN]) override;
     void SetPowerOnCounter(uint8_t powerOnCounter);
     void SetModelId(uint8_t modelId);
     void SetPower(uint8_t power);

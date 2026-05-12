@@ -1,0 +1,26 @@
+There are a few new features that are in this fork+branch of ExpressLRS that are relevant to the front-end web-ui:
+
+ * AM32 configurator (under advanced, and have assets in `public`)
+ * VESC (under advanced)
+ * Custom Mixer (under advanced)
+ * Javascript Uploadable plug-in (info-panel)
+
+A few changes:
+
+ * wifi-panel should disallow users to set a blank SSID if a home network is specified
+ * wifi-panel should allow the user to navigate away cleanly if home SSID is missing from JSON
+ * wifi-panel SSID scanning feature for ESP8 has been removed
+ * continuous-wave panel is removed to save space
+ * `mui.js` is a minimal shell that only implements the overlay functionality and nothing else
+
+A few build changes:
+
+ * AM32 assets are only put into the payload if the build target is ESP32 (so not ESP8285 or ESP8266)
+ * On top of every generated header, is the header's own file name, for ease of identification
+
+All CSS files have been shrunk a bit:
+
+ * Some hex colour values now use just 3 characters instead of all 6
+ * Some classes have been merged if they are redundant
+ * Some alpha channel values use single digit precision (but with a minimum of 0.1)
+ * A lot of unused classes are commented out

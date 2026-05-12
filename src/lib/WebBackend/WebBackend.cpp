@@ -1,6 +1,7 @@
 #include "WebBackend.h"
 
 #include "common.h"
+#include "helpers.h"
 #if defined(TARGET_RX)
 #include "CustomMixer.h"
 #include "devServoOutput.h"
@@ -161,7 +162,6 @@ void webbe_tick()
     // it will repeat as fast as the device schedule engine allows
 
     uint32_t now = millis();
-    (void)now;
 
     #if defined(TARGET_RX) && defined(PLATFORM_ESP32)
     am32_tick();
@@ -191,6 +191,9 @@ void webbe_tick()
         // I understand this might be redundant as servosUpdate itself has an internal timeout
         servosFailsafe(!webbe_ws_started);
     }
+    #else
+    UNUSED(now);
+    UNUSED(wsLastAckTime);
     #endif
 }
 
@@ -231,6 +234,8 @@ uint8_t webbe_getRandomWifiChannel()
         esp_random()
     #elif defined(PLATFORM_ESP8266)
         ESP.random()
+    #else
+        rand() // this should not be used, unsupported platform
     #endif
         ^ micros() ^ millis();
     static const uint8_t channels[] = {1, 6, 11};

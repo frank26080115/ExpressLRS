@@ -60,7 +60,6 @@ FIFO<UART_INPUT_BUF_LEN> uartInputBuffer;
 
 uint8_t mavlinkSSBuffer[CRSF_MAX_PACKET_LEN]; // Buffer for current stubbon sender packet (mavlink only)
 
-unsigned long rebootTime = 0;
 extern bool webserverPreventAutoStart;
 //// MSP Data Handling ///////
 bool NextPacketIsDataUl = false;  // if true the next packet will contain the uplink data (instead of channels)
@@ -80,6 +79,7 @@ uint8_t syncTelemBoostState = stbIdle;
 
 uint32_t LastTLMpacketRecv_Ms = 0;
 static uint32_t LinkStatsLastReported_Ms = 0;
+static uint32_t RxDisconnected_Ms = 0;
 static bool commitInProgress = false;
 
 LQCALC<100> LqTQly;
@@ -137,10 +137,6 @@ void switchDiversityAntennas()
   {
     diversityAntennaState = !diversityAntennaState;
     digitalWrite(GPIO_PIN_ANT_CTRL, diversityAntennaState);
-  }
-  if (GPIO_PIN_ANT_CTRL_COMPL != UNDEF_PIN)
-  {
-    digitalWrite(GPIO_PIN_ANT_CTRL_COMPL, !diversityAntennaState);
   }
 }
 
@@ -364,7 +360,7 @@ expresslrs_tlm_ratio_e ICACHE_RAM_ATTR UpdateTlmRatioEffective()
   // If Armed, telemetry is disabled, otherwise use STD
   else if (ratioConfigured == TLM_RATIO_DISARMED)
   {
-    if (handset->IsArmed())
+    if (isArmed)
     {
       retVal = TLM_RATIO_NO_TLM;
       // Avoid updating ExpressLRS_currTlmDenom until connectionState == disconnected
@@ -474,18 +470,20 @@ void SetRFLinkRate(uint8_t index) // Set speed of RF link
 #endif
   hwTimer::updateInterval(interval);
 
-  FHSSusePrimaryFreqBand = !(ModParams->radio_type == RADIO_TYPE_LR1121_LORA_2G4) && !(ModParams->radio_type == RADIO_TYPE_LR1121_GFSK_2G4);
-  FHSSuseDualBand = ModParams->radio_type == RADIO_TYPE_LR1121_LORA_DUAL;
+#if defined(RADIO_LR1121)
+  FHSSusePrimaryFreqBand = !RadioBandMod::isB2G4(ModParams->radio_type);
+  FHSSuseDualBand = RadioBandMod::isBDUAL(ModParams->radio_type);
+#endif
 
   // TODO: check ota_isLegacy here and make appropriate changes
 
   Radio.Config(ModParams->bw, ModParams->sf, ModParams->cr, FHSSgetInitialFreq(),
                ModParams->PreambleLen, invertIQ, ModParams->PayloadLength
 #if defined(RADIO_SX128X)
-               , uidMacSeedGet(), OtaCrcInitializer, (ModParams->radio_type == RADIO_TYPE_SX128x_FLRC)
+               , OtaGetUidSeed(), OtaCrcInitializer, ModParams->radio_type
 #endif
 #if defined(RADIO_LR1121)
-               , (ModParams->radio_type == RADIO_TYPE_LR1121_GFSK_900 || ModParams->radio_type == RADIO_TYPE_LR1121_GFSK_2G4), (uint8_t)UID[5], (uint8_t)UID[4]
+               , ModParams->radio_type, (uint8_t)UID[5], (uint8_t)UID[4]
 #endif
                );
 
@@ -494,8 +492,7 @@ void SetRFLinkRate(uint8_t index) // Set speed of RF link
   {
     Radio.Config(ModParams->bw2, ModParams->sf2, ModParams->cr2, FHSSgetInitialGeminiFreq(),
                 ModParams->PreambleLen2, invertIQ, ModParams->PayloadLength,
-                (ModParams->radio_type == RADIO_TYPE_LR1121_GFSK_900 || ModParams->radio_type == RADIO_TYPE_LR1121_GFSK_2G4),
-                (uint8_t)UID[5], (uint8_t)UID[4], SX12XX_Radio_2);
+                ModParams->radio_type, (uint8_t)UID[5], (uint8_t)UID[4], SX12XX_Radio_2);
   }
 #endif
 
@@ -565,7 +562,7 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
   uint32_t SyncInterval = (connectionState == connected && !isTlmDisarmed) ? ExpressLRS_currAirRate_RFperfParams->SyncPktIntervalConnected : ExpressLRS_currAirRate_RFperfParams->SyncPktIntervalDisconnected;
   bool skipSync = InBindingMode ||
     // TLM_RATIO_DISARMED keeps sending sync packets even when armed until the RX stops sending telemetry and the TLM=Off has taken effect
-    (isTlmDisarmed && handset->IsArmed() && (ExpressLRS_currTlmDenom == 1));
+    (isTlmDisarmed && isArmed && (ExpressLRS_currTlmDenom == 1));
 
   uint8_t NonceFHSSresult = OtaNonce % ExpressLRS_currAirRate_Modparams->FHSShopInterval;
 
@@ -773,7 +770,7 @@ void ResetPower()
   // (user may be turning up the power while flying and dropping the power may compromise the link)
   if (config.GetDynamicPower())
   {
-    if (!handset->IsArmed())
+    if (!isArmed)
     {
       // if dynamic power enabled and not armed then set to MinPower
       POWERMGNT::setPower(MinPower);
@@ -840,8 +837,6 @@ static void ConfigChangeCommit()
   ChangeRadioParams();
   // Clear the commitInProgress flag so normal processing resumes
   commitInProgress = false;
-  // UpdateFolderNames is expensive so it is called directly instead of in event() which gets called a lot
-  crsfTransmitter.updateFolderNames();
   devicesTriggerEvent(changes);
 }
 
@@ -956,8 +951,9 @@ static void UpdateConnectDisconnectStatus()
   {
     if (connectionState != connected)
     {
-      setConnectionState(connected);
       DBGLN("got downlink conn");
+      RxDisconnected_Ms = 0;
+      setConnectionState(connected);
 
       apInputBuffer.flush();
       apOutputBuffer.flush();
@@ -969,8 +965,7 @@ static void UpdateConnectDisconnectStatus()
     (connectionState == awaitingModelId && (now - rfModeLastChangedMS) > ExpressLRS_currAirRate_RFperfParams->DisconnectTimeoutMs))
   {
     setConnectionState(disconnected);
-    linkStats.uplink_Link_quality = 0;
-    LinkStatsLastReported_Ms = 0; // Notify immediately
+    RxDisconnected_Ms = now;
     connectionHasModelMatch = true;
   }
 }
@@ -1001,7 +996,7 @@ static void CheckReadyToSend()
   if (RxWiFiReadyToSend)
   {
     RxWiFiReadyToSend = false;
-    if (!handset->IsArmed())
+    if (!isArmed)
     {
       SendRxWiFiOverMSP();
     }
@@ -1066,7 +1061,7 @@ static void EnterBindingMode()
 
   // Start attempting to bind
   // Lock the RF rate and freq while binding
-  SetRFLinkRate(enumRatetoIndex(RATE_BINDING));
+  SetRFLinkRate(enumRatetoIndexSafe(RATE_BINDING));
 
   // Start transmitting again
   hwTimer::resume();
@@ -1364,11 +1359,6 @@ static void setupTarget()
     pinMode(GPIO_PIN_ANT_CTRL, OUTPUT);
     digitalWrite(GPIO_PIN_ANT_CTRL, diversityAntennaState);
   }
-  if (GPIO_PIN_ANT_CTRL_COMPL != UNDEF_PIN)
-  {
-    pinMode(GPIO_PIN_ANT_CTRL_COMPL, OUTPUT);
-    digitalWrite(GPIO_PIN_ANT_CTRL_COMPL, !diversityAntennaState);
-  }
 
   setupSerial();
   setupTargetCommon();
@@ -1435,12 +1425,24 @@ static void checkSendLinkStatsToHandset(uint32_t now)
 {
   if ((now - LinkStatsLastReported_Ms) > firmwareOptions.tlm_report_interval)
   {
-    uint8_t linkStatisticsFrame[CRSF_FRAME_NOT_COUNTED_BYTES + CRSF_FRAME_SIZE(sizeof(crsfLinkStatistics_t))];
+    // If we have gone to disconnected state, keep sending the ghost linkstats for some time
+    if (RxDisconnected_Ms)
+    {
+      constexpr uint32_t LOST_NOTIFICATION_MAX_DELAY_MS = 3000U;
+      // Delay a variable amount based on the LQ. Lower LQ, lower time before we tell the handset what's up
+      uint32_t TelemetryLostCalloutDelay_Ms = map(constrain(linkStats.uplink_Link_quality, 50, 100), 50, 100, 0, LOST_NOTIFICATION_MAX_DELAY_MS);
+      if (now - RxDisconnected_Ms > TelemetryLostCalloutDelay_Ms)
+      {
+        RxDisconnected_Ms = 0;
+        linkStats.uplink_Link_quality = 0;
+      }
+    }
 
-    crsfRouter.makeLinkStatisticsPacket(linkStatisticsFrame);
+    CRSF_MK_FRAME_T(crsfLinkStatistics_t) linkStatisticsFrame;
+    crsfRouter.makeLinkStatisticsPacket(&linkStatisticsFrame.h);
     // the linkStats originates from the OTA connector so we don't send it back there.
-    crsfRouter.deliverMessage(&otaConnector, (crsf_header_t *)linkStatisticsFrame);
-    sendCRSFTelemetryToBackpack(linkStatisticsFrame);
+    crsfRouter.deliverMessage(&otaConnector, &linkStatisticsFrame.h);
+    sendCRSFTelemetryToBackpack((uint8_t *)&linkStatisticsFrame);
     LinkStatsLastReported_Ms = now;
   }
 }
@@ -1457,7 +1459,7 @@ void setup()
     DBGLN("Initialised devices");
 
     setupBindingFromConfig();
-    FHSSrandomiseFHSSsequence(uidMacSeedGet());
+    FHSSrandomiseFHSSsequence(OtaGetUidSeed());
 
     Radio.RXdoneCallback = &RXdoneISR;
     Radio.TXdoneCallback = &TXdoneISR;
@@ -1560,11 +1562,7 @@ void loop()
 
   // Not a device because it must be run on the loop core
   checkBackpackUpdate();
-
-  // If the reboot time is set and the current time is past the reboot time then reboot.
-  if (rebootTime != 0 && now > rebootTime) {
-    ESP.restart();
-  }
+  checkRebootTime(now);
 
   executeDeferredFunction(micros());
 
@@ -1622,7 +1620,7 @@ void loop()
 #if defined(RADIO_LR1121)
     // Send half of the bind packets on the 2.4GHz domain
     if (BindingSendCount == BindingSpamAmount / 2) {
-      SetRFLinkRate(enumRatetoIndex(RATE_DUALBAND_BINDING));
+      SetRFLinkRate(enumRatetoIndexSafe(RATE_DUALBAND_BINDING));
       // Increment BindingSendCount so that SetRFLinkRate is only called once.
       BindingSendCount++;
     }

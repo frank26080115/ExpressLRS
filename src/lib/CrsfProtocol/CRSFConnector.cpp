@@ -1,5 +1,3 @@
-#include "targets.h"
-
 #include "CRSFConnector.h"
 #include "logging.h"
 
@@ -18,6 +16,7 @@ bool CRSFConnector::forwardsTo(const crsf_addr_e device_id)
 
 void CRSFConnector::debugCRSF(const char *str, const crsf_header_t *message)
 {
+#if defined(DEBUG_LOG)
     DBGLN(str);
     DBGLN("dev:  %x", message->sync_byte);
     DBGLN("size: %x", message->frame_size);
@@ -29,4 +28,5 @@ void CRSFConnector::debugCRSF(const char *str, const crsf_header_t *message)
         DBGLN("dest: %x", ext->dest_addr);
         DBGLN("orig: %x", ext->orig_addr);
     }
+#endif
 }

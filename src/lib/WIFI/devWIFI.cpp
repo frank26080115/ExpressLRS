@@ -8,6 +8,7 @@
 #include <EEPROM.h>
 
 #if defined(PLATFORM_ESP32)
+#include <esp_wifi.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <Update.h>
@@ -27,6 +28,7 @@
 #include <ESPAsyncWebServer.h>
 
 #include "common.h"
+#include "rxtx_intf.h"
 #include "POWERMGNT.h"
 #include "FHSS.h"
 #include "random.h"
@@ -35,6 +37,10 @@
 #include "options.h"
 #include "helpers.h"
 #include "devButton.h"
+#include "devAnalogVbat.h"
+#if defined(TARGET_RX)
+#include "VbatCalibration.h"
+#endif
 #if defined(TARGET_RX) && defined(PLATFORM_ESP32)
 #include "devVTXSPI.h"
 #endif
@@ -57,8 +63,6 @@
 
 extern void setButtonColors(uint8_t b1, uint8_t b2);
 #endif
-
-extern unsigned long rebootTime;
 
 static char station_ssid[33];
 static char station_password[65];
@@ -217,7 +221,7 @@ static void HandleReboot(AsyncWebServerRequest *request)
   AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "Kill -9, no more CPU time!");
   response->addHeader("Connection", "close");
   request->send(response);
-  rebootTime = millis() + 100;
+  scheduleRebootTime(200);
 }
 
 static void HandleReset(AsyncWebServerRequest *request)
@@ -242,7 +246,7 @@ static void HandleReset(AsyncWebServerRequest *request)
   AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "Reset complete, rebooting...");
   response->addHeader("Connection", "close");
   request->send(response);
-  rebootTime = millis() + 100;
+  scheduleRebootTime(100);
 }
 
 static void UpdateSettings(AsyncWebServerRequest *request, JsonVariant &json)
@@ -282,6 +286,101 @@ static const char *GetConfigUidType(const JsonObject json)
   return "Not set (using MAC address)";
 #endif
 }
+
+static int8_t wifi_GetClientRssi()
+{
+  if (wifiMode == WIFI_STA)
+    return WiFi.RSSI();
+
+#if defined(PLATFORM_ESP32)
+  // If AP mode, only return an RSSI if there is just one client connected
+  // This could take the request's IP address, find it in tcpip_adapter_get_sta_list(), match it by MAC to ap_sta_list,
+  // but there should just be one client
+  wifi_sta_list_t staList;
+  if (esp_wifi_ap_get_sta_list(&staList) == ESP_OK)
+  {
+    if (staList.num == 1)
+      return staList.sta[0].rssi;
+  }
+#endif
+  // ESP8266 doesn't seem to store connected station RSSI :/
+
+  return 0;
+}
+
+#if defined(TARGET_RX) && defined(PLATFORM_ESP32)
+static uint8_t getDefinedVoltageSourceCount()
+{
+    uint8_t count = 0;
+    if (hardware_pin(HARDWARE_vbat) != UNDEF_PIN)
+        ++count;
+#if defined(PLATFORM_ESP32)
+    if (hardware_pin(HARDWARE_vsrc1) != UNDEF_PIN)
+        ++count;
+    if (hardware_pin(HARDWARE_vsrc2) != UNDEF_PIN)
+        ++count;
+    if (hardware_pin(HARDWARE_vsrc3) != UNDEF_PIN)
+        ++count;
+#endif
+    return count;
+}
+
+static void populateVoltageSampleJson(JsonObject root, const voltage_source_sample_t &sample)
+{
+  root["rawMax"] = sample.rawMax;
+  root["adcMedian"] = sample.adcMedian;
+  root["saturated"] = sample.saturated;
+  root["hasReading"] = sample.hasReading;
+}
+
+static void SampleVoltageSources(AsyncWebServerRequest *request, JsonVariant &json)
+{
+  JsonArray requests = json["requests"].as<JsonArray>();
+  if (requests.isNull())
+  {
+    request->send(400, "text/plain", "Voltage sample batch requests are required");
+    return;
+  }
+
+  auto *response = new AsyncJsonResponse();
+  JsonObject root = response->getRoot().to<JsonObject>();
+  JsonObject samplesRoot = root["samples"].to<JsonObject>();
+
+  bool sampledAny = false;
+  Vbat_setCalibrationActive(true);
+  for (JsonVariant requestItem : requests)
+  {
+    uint8_t sourceIdx = 0;
+    const char *sourceId = requestItem["source"] | "";
+    if (!VbatCalibration_findSource(sourceId, &sourceIdx) || !VbatCalibration_isSourceDefined(sourceIdx))
+      continue;
+
+    voltage_source_config_t source {};
+    VbatCalibration_getSourceConfig(sourceIdx, &source);
+    int atten = requestItem["atten"] | source.atten;
+    uint8_t samples = requestItem["samples"] | 24;
+
+    voltage_source_sample_t sample {};
+    if (!VbatCalibration_sampleSource(sourceIdx, atten, samples, &sample))
+      continue;
+
+    JsonObject sampleRoot = samplesRoot[source.id].to<JsonObject>();
+    populateVoltageSampleJson(sampleRoot, sample);
+    sampledAny = true;
+  }
+  Vbat_setCalibrationActive(false);
+
+  if (!sampledAny)
+  {
+    delete response;
+    request->send(400, "text/plain", "No valid voltage sample batch requests");
+    return;
+  }
+
+  response->setLength();
+  request->send(response);
+}
+#endif
 
 static void GetConfiguration(AsyncWebServerRequest *request)
 {
@@ -406,7 +505,7 @@ static void GetConfiguration(AsyncWebServerRequest *request)
       if (pin == U0TXD_GPIO_NUM) features |= 1;  // SerialTX supported
       else if (pin == U0RXD_GPIO_NUM) features |= 2;  // SerialRX supported
       else if (pin == GPIO_PIN_SCL) features |= 4;  // I2C SCL supported (only on this pin)
-      else if (pin == GPIO_PIN_SDA) features |= 8;  // I2C SCL supported (only on this pin)
+      else if (pin == GPIO_PIN_SDA) features |= 8;  // I2C SDA supported (only on this pin)
       else if (GPIO_PIN_SCL == UNDEF_PIN || GPIO_PIN_SDA == UNDEF_PIN) features |= 12; // Both I2C SCL/SDA supported (on any pin)
       #if defined(PLATFORM_ESP32)
       if (pin != 0) features |= 16; // DShot supported on all pins but GPIO0
@@ -426,7 +525,9 @@ static void GetConfiguration(AsyncWebServerRequest *request)
     settings["lua_name"] = device_name;
     settings["uidtype"] = GetConfigUidType(json);
     settings["ssid"] = station_ssid;
+    settings["ap-ssid"] = makeUniqueSsid();
     settings["mode"] = wifiMode == WIFI_STA ? "STA" : "AP";
+    settings["wifi_dbm"] = wifi_GetClientRssi();
     settings["custom_hardware"] = hardware_flag(HARDWARE_customised);
     settings["target"] = &target_name[4];
     settings["version"] = VERSION;
@@ -436,6 +537,9 @@ static void GetConfiguration(AsyncWebServerRequest *request)
 #endif
 #if defined(TARGET_RX)
     settings["module-type"] = "RX";
+#endif
+#if defined(TARGET_RX) && defined(PLATFORM_ESP32)
+    settings["voltage_source_count"] = getDefinedVoltageSourceCount();
 #endif
 #if defined(RADIO_SX128X)
     settings["radio-type"] = "SX128X";
@@ -678,6 +782,7 @@ static void UpdateConfiguration(AsyncWebServerRequest *request, JsonVariant &jso
 }
 #endif
 
+#ifdef PLATFORM_ESP32
 static void WebUpdateSendNetworks(AsyncWebServerRequest *request)
 {
   int numNetworks = WiFi.scanComplete();
@@ -712,6 +817,7 @@ static void WebUpdateSendNetworks(AsyncWebServerRequest *request)
     request->send(204, "application/json", "[]");
   }
 }
+#endif
 
 static void sendResponse(AsyncWebServerRequest *request, const String &msg, WiFiMode_t mode) {
   AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", msg);
@@ -823,7 +929,7 @@ static void WebUploadResponseHandler(AsyncWebServerRequest *request) {
       #else
         msg += "Please wait for a few seconds while the device reboots.\"}";
       #endif
-      rebootTime = millis() + 200;
+      scheduleRebootTime(200);
     } else {
       StreamString p = StreamString();
       if (Update.hasError()) {
@@ -1049,6 +1155,8 @@ static size_t getFirmwareChunk(uint8_t *data, size_t len, size_t pos)
       file2.close();
     }
   }
+#else
+  UNUSED(sketchSize);
 #endif
 
   // If using local stack buffer, move the 4 bytes into the passed buffer
@@ -1290,7 +1398,9 @@ static void startServices()
   {
       server.on(asset.path, WebUpdateSendContent);
   }
+  #ifdef PLATFORM_ESP32
   server.on("/networks.json", WebUpdateSendNetworks);
+  #endif
   server.on("/sethome", WebUpdateSetHome);
   server.on("/forget", WebUpdateForget);
   server.on("/connect", WebUpdateConnect);
@@ -1321,6 +1431,9 @@ static void startServices()
 
   server.addHandler(new AsyncCallbackJsonWebHandler("/config", UpdateConfiguration));
   server.addHandler(new AsyncCallbackJsonWebHandler("/options.json", UpdateSettings));
+  #if defined(TARGET_RX) && defined(PLATFORM_ESP32)
+    server.addHandler(new AsyncCallbackJsonWebHandler("/voltage-sample", SampleVoltageSources));
+  #endif
   #if defined(TARGET_TX)
     server.addHandler(new AsyncCallbackJsonWebHandler("/buttons", WebUpdateButtonColors));
     auto *handler = new AsyncCallbackJsonWebHandler("/import", ImportConfiguration);

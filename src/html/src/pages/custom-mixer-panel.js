@@ -1,6 +1,5 @@
 import {html, LitElement} from "lit";
 import {customElement} from "lit/decorators.js";
-import '../assets/mui.js';
 import {elrsState, saveConfig} from "../utils/state.js";
 
 const SCALE_STEP_PERCENT = 5;

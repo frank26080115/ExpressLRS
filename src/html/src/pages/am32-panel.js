@@ -1,6 +1,5 @@
 import {html, LitElement} from 'lit'
 import {customElement} from 'lit/decorators.js'
-import '../assets/mui.js'
 import {cuteAlert} from '../utils/feedback.js'
 import {elrsState} from '../utils/state.js'
 

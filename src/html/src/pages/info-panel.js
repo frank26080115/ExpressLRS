@@ -1,9 +1,8 @@
-import {html, LitElement} from "lit";
-import {customElement} from "lit/decorators.js";
-import {elrsState, formatBand} from "../utils/state.js";
+import {html, LitElement} from "lit"
+import {customElement} from "lit/decorators.js"
+import {elrsState, formatBand, formatWifiRssi} from "../utils/state.js"
 import {SERIAL_OPTIONS1} from '../utils/globals.js'
-import {cuteAlert} from "../utils/feedback.js";
-import '../assets/mui.js';
+import {cuteAlert} from "../utils/feedback.js"
 import '../components/filedrag.js'
 
 @customElement('info-panel')
@@ -27,6 +26,7 @@ class InfoPanel extends LitElement {
                     <tr><td><b>Radio</b></td><td>${elrsState.settings['radio-type']}</td></tr>
                     <tr><td><b>Domain</b></td><td>${formatBand()}</td></tr>
                     <tr><td><b>Binding UID</b></td><td>${elrsState.config.uid.toString()}</td></tr>
+                    <tr><td><b>WiFi State</b></td><td>${formatWifiRssi()}</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -70,7 +70,6 @@ class InfoPanel extends LitElement {
                         ${elrsState.settings?.custom_hardware ?
                                 html`<tr><td><b>Customised Hardware Settings</b></td><td>True</td></tr>`
                                 : ''}
-
                         </tbody>
                     </table>
                 </div>
@@ -118,18 +117,13 @@ class InfoPanel extends LitElement {
                 }
 
                 const pluginContext = {
-                    config:   {...elrsState.config},
-                    options:  {...elrsState.options},
+                    config: {...elrsState.config},
+                    options: {...elrsState.options},
                     settings: {...elrsState.settings}
                 }
                 await globalThis.elrs_plugin_init(pluginContext)
-                //await cuteAlert({
-                //    type: 'success',
-                //    title: 'Plugin Loaded',
-                //    message: 'The plugin was loaded successfully.'
-                //})
             } catch (err) {
-                console.log(err);
+                console.log(err)
                 await cuteAlert({
                     type: 'error',
                     title: 'Plugin Load Failed',
@@ -149,7 +143,6 @@ class InfoPanel extends LitElement {
 
     _hasCustomSettings() {
         let custom = false
-        // customised hardware settings
         custom = elrsState.options['is-airport'] || elrsState.options['wifi-on-interval'] !== 60
 
         // FEATURE: NOT IS_TX

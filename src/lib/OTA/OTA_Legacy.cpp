@@ -591,7 +591,7 @@ void ota_cntNewVersionPkts()
             // reset the search scan timer
             RFmodeLastCycled = millis();
             // regenerate the hop table with the correct seed
-            FHSSrandomiseFHSSsequence(uidMacSeedGet());
+            FHSSrandomiseFHSSsequence(OtaGetUidSeed());
             // reinitialize all radio parameters
             SetRFLinkRate(ExpressLRS_nextAirRateIndex, false);
             Radio.RXnb();
@@ -898,16 +898,16 @@ void SetRFLinkRate_v3(uint8_t index)
 #endif
   hwTimer::updateInterval(interval);
 
-  FHSSusePrimaryFreqBand = !(ModParams->radio_type == RADIO_TYPE_LR1121_LORA_2G4) && !(ModParams->radio_type == RADIO_TYPE_LR1121_GFSK_2G4);
-  FHSSuseDualBand = ModParams->radio_type == RADIO_TYPE_LR1121_LORA_DUAL;
+  FHSSusePrimaryFreqBand = !RadioBandMod::isB2G4(ModParams->radio_type);
+  FHSSuseDualBand = RadioBandMod::isBDUAL(ModParams->radio_type);
 
   Radio.Config(ModParams->bw, ModParams->sf, ModParams->cr, FHSSgetInitialFreq(),
                ModParams->PreambleLen, invertIQ, ModParams->PayloadLength
 #if defined(RADIO_SX128X)
-               , uidMacSeedGet_v3(), OtaCrcInitializer_v3, (ModParams->radio_type == RADIO_TYPE_SX128x_FLRC)
+               , uidMacSeedGet_v3(), OtaCrcInitializer_v3, ModParams->radio_type
 #endif
 #if defined(RADIO_LR1121)
-               , (ModParams->radio_type == RADIO_TYPE_LR1121_GFSK_900 || ModParams->radio_type == RADIO_TYPE_LR1121_GFSK_2G4), (uint8_t)UID[5], (uint8_t)UID[4]
+               , ModParams->radio_type, (uint8_t)UID[5], (uint8_t)UID[4]
 #endif
                );
 
@@ -916,7 +916,7 @@ void SetRFLinkRate_v3(uint8_t index)
   {
     Radio.Config(ModParams->bw2, ModParams->sf2, ModParams->cr2, FHSSgetInitialGeminiFreq(),
                 ModParams->PreambleLen2, invertIQ, ModParams->PayloadLength,
-                (ModParams->radio_type == RADIO_TYPE_LR1121_GFSK_900 || ModParams->radio_type == RADIO_TYPE_LR1121_GFSK_2G4),
+                ModParams->radio_type,
                 (uint8_t)UID[5], (uint8_t)UID[4], SX12XX_Radio_2);
   }
 #endif
@@ -1068,7 +1068,7 @@ void ICACHE_RAM_ATTR SendRCdataToRF_v3()
   uint32_t SyncInterval = (connectionState == connected && !isTlmDisarmed) ? ExpressLRS_currAirRate_RFperfParams->SyncPktIntervalConnected : ExpressLRS_currAirRate_RFperfParams->SyncPktIntervalDisconnected;
   bool skipSync = InBindingMode ||
     // TLM_RATIO_DISARMED keeps sending sync packets even when armed until the RX stops sending telemetry and the TLM=Off has taken effect
-    (isTlmDisarmed && handset->IsArmed() && (ExpressLRS_currTlmDenom == 1));
+    (isTlmDisarmed && isArmed && (ExpressLRS_currTlmDenom == 1));
 
   uint8_t NonceFHSSresult = OtaNonce % ExpressLRS_currAirRate_Modparams->FHSShopInterval;
 

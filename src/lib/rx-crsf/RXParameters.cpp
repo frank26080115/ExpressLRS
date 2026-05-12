@@ -1,11 +1,13 @@
 #include "targets.h"
 #if !defined(UNIT_TEST)
 #include "RXEndpoint.h"
+#include "FHSS.h"
 #include "POWERMGNT.h"
 #include "config.h"
 #include "deferred.h"
 #include "devServoOutput.h"
 #include "helpers.h"
+#include "rxtx_intf.h"
 #include "logging.h"
 
 #define RX_HAS_SERIAL1 (GPIO_PIN_SERIAL1_TX != UNDEF_PIN || OPT_HAS_SERVO_OUTPUT)
@@ -116,7 +118,7 @@ static stringParameter luaModelNumber = {
 };
 
 static stringParameter luaELRSversion = {
-    {version, CRSF_INFO},
+    {version_domain, CRSF_INFO},
     commit
 };
 

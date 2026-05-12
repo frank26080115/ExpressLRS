@@ -1,7 +1,6 @@
 import {html, LitElement} from "lit"
 import {customElement, state} from "lit/decorators.js"
-import "../assets/mui.js"
-import FEATURES from "../features.js"
+import FEATURES from "../../features.js"
 import {elrsState, saveConfig} from "../utils/state.js"
 import {PWM_MODE_SERIAL2RX} from "./connections-panel.js"
 

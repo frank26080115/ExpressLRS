@@ -1,5 +1,5 @@
-#ifndef DEBUG_H
-#define DEBUG_H
+#ifndef ELRS_LOGGING_H
+#define ELRS_LOGGING_H
 
 #include "VA_OPT.h"
 

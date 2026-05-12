@@ -37,7 +37,6 @@ typedef enum {
 
     // Radio Antenna
     HARDWARE_ant_ctrl,
-    HARDWARE_ant_ctrl_compl,
 
     // Radio power
     HARDWARE_power_enable,
@@ -48,7 +47,6 @@ typedef enum {
     HARDWARE_power_txen_2,
     HARDWARE_power_lna_gain,
     HARDWARE_power_min,
-    HARDWARE_power_high,
     HARDWARE_power_max,
     HARDWARE_power_default,
 
@@ -146,6 +144,30 @@ typedef enum {
     HARDWARE_vbat_offset,
     HARDWARE_vbat_scale,
     HARDWARE_vbat_atten,
+    HARDWARE_vbat_noreading,
+    HARDWARE_vbat_cal_min,
+    HARDWARE_vbat_cal_max,
+    HARDWARE_vsrc1,
+    HARDWARE_vsrc1_offset,
+    HARDWARE_vsrc1_scale,
+    HARDWARE_vsrc1_atten,
+    HARDWARE_vsrc1_noreading,
+    HARDWARE_vsrc1_cal_min,
+    HARDWARE_vsrc1_cal_max,
+    HARDWARE_vsrc2,
+    HARDWARE_vsrc2_offset,
+    HARDWARE_vsrc2_scale,
+    HARDWARE_vsrc2_atten,
+    HARDWARE_vsrc2_noreading,
+    HARDWARE_vsrc2_cal_min,
+    HARDWARE_vsrc2_cal_max,
+    HARDWARE_vsrc3,
+    HARDWARE_vsrc3_offset,
+    HARDWARE_vsrc3_scale,
+    HARDWARE_vsrc3_atten,
+    HARDWARE_vsrc3_noreading,
+    HARDWARE_vsrc3_cal_min,
+    HARDWARE_vsrc3_cal_max,
 
     // VTX
     #ifndef TRIM_UNNECESSARY_HW
