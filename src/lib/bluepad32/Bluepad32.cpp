@@ -7,17 +7,23 @@
 
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/portmacro.h>
 #include <freertos/task.h>
 
 #include "ArduinoBluepad32.h"
 #include "arduino_platform.h"
+#include "bt/uni_bt.h"
+#include "bt/uni_bt_service.h"
+#include "btstack.h"
 #include "btstack_port_esp32.h"
+#include "btstack_run_loop_freertos.h"
 #include "btstack_run_loop.h"
 #include "crsf_protocol.h"
 #include "config.h"
 #include "device.h"
 #include "controller/uni_gamepad.h"
 #include "uni.h"
+#include "uni_virtual_device.h"
 #if defined(TARGET_TX)
 #include "handset.h"
 #endif
@@ -53,6 +59,25 @@ static const bluepad_cfg_t* bluepadConfig = nullptr;
 
 static uint16_t btn_was_pressed = 0; // bit flags
 
+enum : uint32_t
+{
+    BLUEPAD_ACTION_SETUP = 1 << 0,
+    BLUEPAD_ACTION_SET_PAIRING = 1 << 1,
+    BLUEPAD_ACTION_DELETE_DEVICE = 1 << 2,
+    BLUEPAD_ACTION_DELETE_ALL_DEVICES = 1 << 3,
+    BLUEPAD_ACTION_REFRESH_DEVICES = 1 << 4,
+};
+
+static portMUX_TYPE bluepadActionMux = portMUX_INITIALIZER_UNLOCKED;
+static volatile uint32_t bluepadPendingActions = 0;
+static bool bluepadPendingPairingEnabled = false;
+static bd_addr_t bluepadPendingDeleteAddress = {};
+static volatile bool bluepadRunLoopStarted = false;
+static volatile bool bluepadBtstackSetupComplete = false;
+static bluepad_paired_device_t bluepadPairedDevices[BLUEPAD_MAX_PAIRED_DEVICES] = {};
+static size_t bluepadPairedDeviceCount = 0;
+static bool bluepadPairingEnabled = false;
+
 #if defined(TARGET_RX)
 enum class bluepad32_rx_state_e : uint8_t
 {
@@ -68,9 +93,17 @@ static volatile bool loraPacketReceived = false;
 
 extern void (*btstack_run_loop_freertos_execute_hook)(void);
 
+static void queueBluepadAction(uint32_t action);
+static void processBluepadActionsOnBtstackThread();
+
 static void btstack_loop_hook()
 {
+    bluepadRunLoopStarted = true;
+    processBluepadActionsOnBtstackThread();
+
     #if 0
+    // concept code to slow down the btstack thread
+    // do not enable this code unless we see performance problems
     if (bluepad32RxState == bluepad32_rx_state_e::loraOnly) {
         vTaskDelay(pdMS_TO_TICKS(5));
     }
@@ -119,6 +152,79 @@ static void setBluepad32ConnectionState(connectionState_e newState)
 }
 #endif
 
+static void queueBluepadAction(uint32_t action)
+{
+    portENTER_CRITICAL(&bluepadActionMux);
+    bluepadPendingActions |= action;
+    portEXIT_CRITICAL(&bluepadActionMux);
+    if (bluepadRunLoopStarted) {
+        btstack_run_loop_freertos_trigger();
+    }
+}
+
+static void refreshBluepadDeviceCacheOnBtstackThread()
+{
+    bluepad_paired_device_t devices[BLUEPAD_MAX_PAIRED_DEVICES] = {};
+    size_t deviceCount = 0;
+
+    bd_addr_t address;
+    link_key_t linkKey;
+    link_key_type_t type;
+    btstack_link_key_iterator_t iterator;
+
+    if (gap_link_key_iterator_init(&iterator)) {
+        while (deviceCount < BLUEPAD_MAX_PAIRED_DEVICES && gap_link_key_iterator_get_next(&iterator, address, linkKey, &type)) {
+            snprintf(devices[deviceCount].address, sizeof(devices[deviceCount].address), "%s", bd_addr_to_str(address));
+            devices[deviceCount].type = (uint8_t)type;
+            ++deviceCount;
+        }
+        gap_link_key_iterator_done(&iterator);
+    }
+
+    portENTER_CRITICAL(&bluepadActionMux);
+    memcpy(bluepadPairedDevices, devices, sizeof(bluepadPairedDevices));
+    bluepadPairedDeviceCount = deviceCount;
+    bluepadPairingEnabled = uni_bt_enable_new_connections_is_enabled();
+    portEXIT_CRITICAL(&bluepadActionMux);
+}
+
+static void processBluepadActionsOnBtstackThread()
+{
+    bd_addr_t deleteAddress;
+    bool pairingEnabled;
+
+    portENTER_CRITICAL(&bluepadActionMux);
+    const uint32_t actions = bluepadPendingActions;
+    bluepadPendingActions = 0;
+    pairingEnabled = bluepadPendingPairingEnabled;
+    bd_addr_copy(deleteAddress, bluepadPendingDeleteAddress);
+    portEXIT_CRITICAL(&bluepadActionMux);
+
+    if (actions & BLUEPAD_ACTION_SETUP) {
+        BP32.setup(&onConnectedController, &onDisconnectedController);
+        uni_virtual_device_set_enabled(false);
+        uni_bt_service_set_enabled(false);
+        bluepadBtstackSetupComplete = true;
+    }
+
+    if (actions & BLUEPAD_ACTION_SET_PAIRING) {
+        uni_bt_enable_new_connections_unsafe(pairingEnabled);
+    }
+
+    if (actions & BLUEPAD_ACTION_DELETE_DEVICE) {
+        gap_drop_link_key_for_bd_addr(deleteAddress);
+    }
+
+    if (actions & BLUEPAD_ACTION_DELETE_ALL_DEVICES) {
+        uni_bt_del_keys_unsafe();
+    }
+
+    if (actions & (BLUEPAD_ACTION_SETUP | BLUEPAD_ACTION_SET_PAIRING | BLUEPAD_ACTION_DELETE_DEVICE |
+                   BLUEPAD_ACTION_DELETE_ALL_DEVICES | BLUEPAD_ACTION_REFRESH_DEVICES)) {
+        refreshBluepadDeviceCacheOnBtstackThread();
+    }
+}
+
 bool bluepad_init()
 {
     if (bluepad32InitTaskHandle != nullptr)
@@ -141,13 +247,15 @@ void bluepad_poll()
     if (!hasSetup)
     {
         hasSetup = true;
-        BP32.setup(&onConnectedController, &onDisconnectedController);
-        BP32.enableVirtualDevice(false);
-        BP32.enableBLEService(false);
         lastControllerDataMillis = millis();
         bluepadConfig = config.GetBluepadConfig();
         loadBluepadFailsafeValues();
         initializeBluepadAuxShadows();
+        queueBluepadAction(BLUEPAD_ACTION_SETUP);
+    }
+
+    if (!bluepadBtstackSetupComplete) {
+        return;
     }
 
     #if defined(TARGET_RX)
@@ -221,6 +329,53 @@ bool bluepad_has_recent_channel_data()
 }
 #endif
 
+void bluepad_set_pairing_enabled(bool enabled)
+{
+    portENTER_CRITICAL(&bluepadActionMux);
+    bluepadPendingPairingEnabled = enabled;
+    bluepadPairingEnabled = enabled;
+    portEXIT_CRITICAL(&bluepadActionMux);
+    queueBluepadAction(BLUEPAD_ACTION_SET_PAIRING);
+}
+
+void bluepad_delete_all_paired_devices()
+{
+    queueBluepadAction(BLUEPAD_ACTION_DELETE_ALL_DEVICES);
+}
+
+bool bluepad_delete_paired_device(const char* address)
+{
+    bd_addr_t parsedAddress;
+    if (address == nullptr || sscanf_bd_addr(address, parsedAddress) == 0) {
+        return false;
+    }
+
+    portENTER_CRITICAL(&bluepadActionMux);
+    bd_addr_copy(bluepadPendingDeleteAddress, parsedAddress);
+    portEXIT_CRITICAL(&bluepadActionMux);
+    queueBluepadAction(BLUEPAD_ACTION_DELETE_DEVICE);
+    return true;
+}
+
+size_t bluepad_get_paired_devices(bluepad_paired_device_t* devices, size_t maxDevices, bool* pairingEnabled)
+{
+    portENTER_CRITICAL(&bluepadActionMux);
+    const size_t count = bluepadPairedDeviceCount < maxDevices ? bluepadPairedDeviceCount : maxDevices;
+    if (devices != nullptr && count > 0) {
+        memcpy(devices, bluepadPairedDevices, count * sizeof(bluepad_paired_device_t));
+    }
+    if (pairingEnabled != nullptr) {
+        *pairingEnabled = bluepadPairingEnabled;
+    }
+    portEXIT_CRITICAL(&bluepadActionMux);
+    return count;
+}
+
+void bluepad_refresh_paired_devices()
+{
+    queueBluepadAction(BLUEPAD_ACTION_REFRESH_DEVICES);
+}
+
 static bool hasRecentControllerData(uint32_t now)
 {
     return hasControllerData && now - lastControllerDataMillis < BLUEPAD32_DISCONNECT_TIMEOUT_MS;
@@ -276,7 +431,7 @@ static void transitionToLoraOnly()
     }
 
     bluepad32RxState = bluepad32_rx_state_e::loraOnly;
-    BP32.enableNewBluetoothConnections(false);
+    bluepad_set_pairing_enabled(false);
 
     for (auto &controller : myControllers)
     {

@@ -4,10 +4,6 @@
 
 #include <ESPAsyncWebServer.h>
 
-#include <ArduinoBluepad32.h>
-#include <bt/uni_bt.h>
-#include <btstack.h>
-
 static void bluepad_auxchan_to_json(const bluepad_auxchan_cfg_t* aux, JsonObject obj)
 {
     if (!aux || obj.isNull()) {
@@ -80,7 +76,9 @@ static void bluepad_send_status(AsyncWebServerRequest* request, bool ok, const c
     JsonDocument doc;
     doc["ok"] = ok;
     doc["message"] = message;
-    doc["pairing"] = uni_bt_enable_new_connections_is_enabled();
+    bool pairingEnabled = false;
+    bluepad_get_paired_devices(nullptr, 0, &pairingEnabled);
+    doc["pairing"] = pairingEnabled;
     bluepad_send_json(request, doc, code);
 }
 
@@ -101,37 +99,26 @@ static const AsyncWebParameter* bluepad_find_address_param(AsyncWebServerRequest
     return nullptr;
 }
 
-static bool bluepad_parse_bd_addr(const String& value, bd_addr_t address)
-{
-    return sscanf_bd_addr(value.c_str(), address) != 0;
-}
-
 static void bluepad_add_paired_devices(JsonArray devices)
 {
-    bd_addr_t address;
-    link_key_t linkKey;
-    link_key_type_t type;
-    btstack_link_key_iterator_t iterator;
-
-    int ok = gap_link_key_iterator_init(&iterator);
-    if (!ok) {
-        return;
-    }
-
-    while (gap_link_key_iterator_get_next(&iterator, address, linkKey, &type)) {
+    bluepad_paired_device_t pairedDevices[BLUEPAD_MAX_PAIRED_DEVICES] = {};
+    const size_t deviceCount = bluepad_get_paired_devices(pairedDevices, BLUEPAD_MAX_PAIRED_DEVICES, nullptr);
+    for (size_t i = 0; i < deviceCount; ++i) {
         JsonObject device = devices.add<JsonObject>();
-        device["address"] = bd_addr_to_str(address);
-        device["type"] = (uint8_t)type;
+        device["address"] = pairedDevices[i].address;
+        device["type"] = pairedDevices[i].type;
     }
-
-    gap_link_key_iterator_done(&iterator);
 }
 
 static void bluepad_handle_devices(AsyncWebServerRequest* request)
 {
+    bool pairingEnabled = false;
+    bluepad_get_paired_devices(nullptr, 0, &pairingEnabled);
+    bluepad_refresh_paired_devices();
+
     JsonDocument doc;
     doc["ok"] = true;
-    doc["pairing"] = uni_bt_enable_new_connections_is_enabled();
+    doc["pairing"] = pairingEnabled;
     JsonArray devices = doc["devices"].to<JsonArray>();
     bluepad_add_paired_devices(devices);
     bluepad_send_json(request, doc);
@@ -139,7 +126,7 @@ static void bluepad_handle_devices(AsyncWebServerRequest* request)
 
 static void bluepad_handle_pairing(AsyncWebServerRequest* request, bool enabled)
 {
-    BP32.enableNewBluetoothConnections(enabled); // this is thread safe, it queues up using btstack_run_loop_execute_on_main_thread internally
+    bluepad_set_pairing_enabled(enabled);
     bluepad_send_status(request, true, enabled ? "Pairing enabled" : "Pairing disabled");
 }
 
@@ -151,19 +138,17 @@ static void bluepad_handle_delete_device(AsyncWebServerRequest* request)
         return;
     }
 
-    bd_addr_t address;
-    if (!bluepad_parse_bd_addr(param->value(), address)) {
+    if (!bluepad_delete_paired_device(param->value().c_str())) {
         bluepad_send_status(request, false, "Invalid Bluetooth address", 400);
         return;
     }
 
-    gap_drop_link_key_for_bd_addr(address);
     bluepad_send_status(request, true, "Paired device deleted");
 }
 
 static void bluepad_handle_delete_all_devices(AsyncWebServerRequest* request)
 {
-    BP32.forgetBluetoothKeys(); // this is thread safe, it queues up using btstack_run_loop_execute_on_main_thread internally
+    bluepad_delete_all_paired_devices();
     bluepad_send_status(request, true, "All paired devices deleted");
 }
 
@@ -216,6 +201,7 @@ void bluepad_setupServer(AsyncWebServer* srv)
     #if defined(TARGET_RX)
     bluepad_rx_wifi_mode();
     #endif
+    bluepad_refresh_paired_devices();
 
     srv->on("/bluepad/devices.json", HTTP_GET, bluepad_handle_devices);
     srv->on("/bluepad/paired.json", HTTP_GET, bluepad_handle_devices);
