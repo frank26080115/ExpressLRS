@@ -1739,8 +1739,9 @@ void RxConfig::SetOtherDefaults()
     for (unsigned int ch = 0; ch < PWM_MAX_CHANNELS - 2; ch++)
     {
         int pin = GPIO_PIN_PWM_OUTPUTS[ch];
-        UNUSED(pin);
         rx_config_pwm_t *pwm = &(m_config.pwmChannels[ch]);
+        UNUSED(pin);
+        UNUSED(pwm);
         #ifdef BUILD_SHREW_HBRIDGE
             pwm->val.inputChannel += 2; // if shrew is a brushed ESC, then the first two channels are already used for driving
         #endif
