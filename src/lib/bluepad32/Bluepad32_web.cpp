@@ -8,6 +8,8 @@
 #include <bt/uni_bt.h>
 #include <btstack.h>
 
+extern ControllerPtr myControllers[BP32_MAX_GAMEPADS];
+
 static void bluepad_auxchan_to_json(const bluepad_auxchan_cfg_t* aux, JsonObject obj)
 {
     if (!aux || obj.isNull()) {
@@ -124,6 +126,19 @@ static void bluepad_add_paired_devices(JsonArray devices)
                 JsonObject device = devices.add<JsonObject>();
                 device["address"] = bd_addr_to_str(address);
                 device["type"] = (uint8_t)type;
+
+                for (int i = 0; i < BP32_MAX_GAMEPADS; ++i) {
+                    ControllerPtr controller = myControllers[i];
+                    if (controller == nullptr || !controller->isConnected()) {
+                        continue;
+                    }
+
+                    ControllerProperties properties = controller->getProperties();
+                    if (bd_addr_cmp(address, properties.btaddr) == 0) {
+                        device["name"] = controller->getModelName();
+                        break;
+                    }
+                }
             }
 
             gap_link_key_iterator_done(&iterator);

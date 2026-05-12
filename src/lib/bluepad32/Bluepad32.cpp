@@ -51,7 +51,7 @@ static TaskHandle_t bluepad32InitTaskHandle = nullptr;
 
 static bool hasSetup = false;
 static uint32_t lastControllerDataMillis = 0;
-static ControllerPtr myControllers[BP32_MAX_GAMEPADS] = {};
+ControllerPtr myControllers[BP32_MAX_GAMEPADS] = {};
 static bool hasControllerData = false;
 static const bluepad_cfg_t* bluepadConfig = nullptr;
 
