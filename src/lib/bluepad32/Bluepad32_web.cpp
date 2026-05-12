@@ -139,7 +139,7 @@ static void bluepad_handle_devices(AsyncWebServerRequest* request)
 
 static void bluepad_handle_pairing(AsyncWebServerRequest* request, bool enabled)
 {
-    BP32.enableNewBluetoothConnections(enabled);
+    BP32.enableNewBluetoothConnections(enabled); // this is thread safe, it queues up using btstack_run_loop_execute_on_main_thread internally
     bluepad_send_status(request, true, enabled ? "Pairing enabled" : "Pairing disabled");
 }
 
@@ -163,7 +163,7 @@ static void bluepad_handle_delete_device(AsyncWebServerRequest* request)
 
 static void bluepad_handle_delete_all_devices(AsyncWebServerRequest* request)
 {
-    BP32.forgetBluetoothKeys();
+    BP32.forgetBluetoothKeys(); // this is thread safe, it queues up using btstack_run_loop_execute_on_main_thread internally
     bluepad_send_status(request, true, "All paired devices deleted");
 }
 
