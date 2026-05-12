@@ -42,12 +42,6 @@ void PPMHandset::End()
 
 void PPMHandset::handleInput()
 {
-    #if defined(BUILD_BLUEPAD32)
-    if (bluepad32_has_recent_channel_data()) {
-        return;
-    }
-    #endif
-
     const auto now = millis();
     size_t length = 0;
     uint32_t localChannelData[CRSF_NUM_CHANNELS];
@@ -75,14 +69,27 @@ void PPMHandset::handleInput()
         vRingbufferReturnItem(rb, static_cast<void *>(items));
         lastPPM = now;
 
+        #if defined(BUILD_BLUEPAD32)
+        if (bluepad_has_recent_channel_data()) {
+            return;
+        }
+        #endif
+
         PerformChannelOverrides(localChannelData, numChannels);
 
         isArmed = numChannels < 5 || CRSF_to_BIT(localChannelData[4]);
+
         if (channelCount > 0)
             RCDataReceived(localChannelData, numChannels);
     }
     else if (lastPPM && now - 1000 > lastPPM)
     {
+        #if defined(BUILD_BLUEPAD32)
+        if (bluepad_has_recent_channel_data()) {
+            return;
+        }
+        #endif
+
         DBGLN("PPM signal lost, disarming");
         isArmed = false;
         if (disconnected)

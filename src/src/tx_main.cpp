@@ -523,10 +523,6 @@ void SetRFLinkRate(uint8_t index) // Set speed of RF link
 
 void ICACHE_RAM_ATTR SendRCdataToRF()
 {
-  #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
-  bluepad32_apply_channel_data_if_recent();
-  #endif
-
   if (ota_isLegacy) {
     SendRCdataToRF_v3();
     return;
@@ -1535,7 +1531,7 @@ void setup()
   }
 
   #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
-  bluepad32_init();
+  bluepad_init();
   #endif
 }
 
@@ -1569,9 +1565,10 @@ void loop()
   HandleUARTin();
 
   #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
-  bluepad32_poll();
-  if (connectionState == noCrossfire && bluepad32_has_recent_channel_data())
+  bluepad_poll();
+  if (connectionState == noCrossfire && bluepad_has_recent_channel_data())
   {
+    // because there's no actual handset, but bluepad has data, we need to trick it into thinking there is actually a handset
     UARTconnected();
   }
   #endif

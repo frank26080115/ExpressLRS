@@ -11,6 +11,9 @@
 #if defined(TARGET_TX)
 #include "handset.h"
 #endif
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+#include "bluepad.h"
+#endif
 
 bool webbe_installed = false;
 bool webbe_ws_started = false;
@@ -43,6 +46,13 @@ static bool parseWsChannelPacket()
     {
         return false;
     }
+
+    #if defined(TARGET_TX) && defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    if (bluepad_has_recent_channel_data()) {
+        return true;
+    }
+    #endif
+
 
     for (uint8_t ch = 0; ch < CRSF_NUM_CHANNELS; ++ch)
     {

@@ -72,6 +72,40 @@ uint32_t dpadToCrsfAxis(uint8_t dpad, uint8_t negativeMask, uint8_t positiveMask
     return negativePressed ? CRSF_CHANNEL_VALUE_MIN : CRSF_CHANNEL_VALUE_MAX;
 }
 
+uint32_t usToCrsfValue(uint16_t us)
+{
+    us = clampValue(us, US_CHANNEL_VALUE_STD_MIN, US_CHANNEL_VALUE_STD_MAX);
+    return CRSF_CHANNEL_VALUE_STD_MIN +
+           ((uint32_t)(us - US_CHANNEL_VALUE_STD_MIN) *
+            (CRSF_CHANNEL_VALUE_STD_MAX - CRSF_CHANNEL_VALUE_STD_MIN)) /
+           (US_CHANNEL_VALUE_STD_MAX - US_CHANNEL_VALUE_STD_MIN);
+}
+
+int32_t usDeltaToCrsfDelta(uint16_t us)
+{
+    return ((int32_t)us * (CRSF_CHANNEL_VALUE_STD_MAX - CRSF_CHANNEL_VALUE_STD_MIN) +
+            ((US_CHANNEL_VALUE_STD_MAX - US_CHANNEL_VALUE_STD_MIN) / 2)) /
+           (US_CHANNEL_VALUE_STD_MAX - US_CHANNEL_VALUE_STD_MIN);
+}
+
+int32_t crsfToShadow(uint32_t crsf)
+{
+    return (int32_t)crsf * BLUEPAD32_CHANNEL_SHADOW_MULTIPLIER;
+}
+
+int32_t clampShadow(int32_t value)
+{
+    const int32_t shadowMin = crsfToShadow(CRSF_CHANNEL_VALUE_STD_MIN);
+    const int32_t shadowMax = crsfToShadow(CRSF_CHANNEL_VALUE_STD_MAX);
+    return clampValue(value, shadowMin, shadowMax);
+}
+
+uint32_t shadowToCrsf(int32_t shadow)
+{
+    shadow = clampShadow(shadow);
+    return (shadow + (BLUEPAD32_CHANNEL_SHADOW_MULTIPLIER / 2)) / BLUEPAD32_CHANNEL_SHADOW_MULTIPLIER;
+}
+
 void update_servo_shadow(int32_t* data, int16_t ctl, uint32_t dt_ms)
 {
     ctl = clampValue(ctl, BLUEPAD32_AXIS_MIN, BLUEPAD32_AXIS_MAX);

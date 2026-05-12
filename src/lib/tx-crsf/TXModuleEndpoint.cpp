@@ -124,6 +124,12 @@ void TXModuleEndpoint::RcPacketToChannelsData(const crsf_header_t *message) // d
         bitsMerged -= srcBits;
     }
 
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    if (bluepad_has_recent_channel_data()) {
+        return;
+    }
+    #endif
+
     handset->PerformChannelOverrides(localChannelData, CRSF_NUM_CHANNELS);
 
     //
@@ -163,12 +169,6 @@ void TXModuleEndpoint::RcPacketToChannelsData(const crsf_header_t *message) // d
         devicesTriggerEvent(EVENT_ARM_FLAG_CHANGED);
 #endif
     }
-
-    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
-    if (bluepad32_has_recent_channel_data()) {
-        return;
-    }
-    #endif
 
     handset->RCDataReceived(localChannelData, CRSF_NUM_CHANNELS);
 }

@@ -1237,7 +1237,7 @@ bool ICACHE_RAM_ATTR RXdoneISR(SX12xxDriverCommon::rx_status const status)
     if (success)
     {
         #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
-        bluepad32_rx_lora_packet_received();
+        bluepad_rx_lora_packet_received();
         #endif
 
         if (doStartTimer)
@@ -2141,8 +2141,8 @@ void setup()
             hwTimer::init(HWtimerCallbackTick, HWtimerCallbackTock);
         }
 
-        #ifdef BUILD_BLUEPAD32
-        bluepad32_init();
+        #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+        bluepad_init();
         #endif
     }
 
@@ -2177,7 +2177,7 @@ void loop()
     checkRebootTime(now);
 
     #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
-    bluepad32_poll();
+    bluepad_poll();
     #endif
 
     CheckConfigChangePending();

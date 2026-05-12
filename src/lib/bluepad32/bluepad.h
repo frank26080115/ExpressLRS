@@ -9,15 +9,14 @@
 #include <ArduinoJson.h>
 
 // public functions
-bool bluepad32_init();
-void bluepad32_poll();
-void bluepad32_disable();
+bool bluepad_init();
+void bluepad_poll();
+void bluepad_disable();
 #if defined(TARGET_RX)
-void bluepad32_rx_lora_packet_received();
+void bluepad_rx_lora_packet_received();
 #endif
 #if defined(TARGET_TX)
-bool bluepad32_has_recent_channel_data();
-bool bluepad32_apply_channel_data_if_recent();
+bool bluepad_has_recent_channel_data();
 #endif
 
 void bluepad_config_to_json(const bluepad_cfg_t* cfg, JsonObject obj);
