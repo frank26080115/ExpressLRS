@@ -38,6 +38,7 @@ extern void servoNewChannelsAvailable();
 
 static constexpr uint32_t BLUEPAD32INIT_TASK_STACK_SIZE = 8192;
 static constexpr UBaseType_t BLUEPAD32INIT_TASK_PRIORITY = 1;
+static constexpr UBaseType_t BLUEPAD32INIT_TASK_PRIORITY_LOW = 0;
 static constexpr BaseType_t BLUEPAD32INIT_TASK_CORE = 1;
 static constexpr size_t BLUEPAD32_CRSF_NUM_CHANNELS = 16;
 static constexpr uint32_t BLUEPAD32_DISCONNECT_TIMEOUT_MS = 1000;
@@ -58,17 +59,36 @@ enum class bluepad32_rx_state_e : uint8_t
     bothListening,
     loraOnly,
     bluetoothActive,
+    wifiMode,
 };
 
 static bluepad32_rx_state_e bluepad32RxState = bluepad32_rx_state_e::bothListening;
 static volatile bool loraPacketReceived = false;
 #endif
 
+extern void (*btstack_run_loop_freertos_execute_hook)(void);
+
+static void btstack_loop_hook()
+{
+    #if 0
+    if (bluepad32RxState == bluepad32_rx_state_e::loraOnly) {
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    else if (bluepad32RxState == bluepad32_rx_state_e::bothListening) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    else if (bluepad32RxState == bluepad32_rx_state_e::wifiMode) {
+        taskYIELD();
+    }
+    #endif
+}
+
 static void Bluepad32InitTask(void *)
 {
     btstack_init();
     uni_platform_set_custom(get_arduino_platform());
     uni_init(0, nullptr);
+    btstack_run_loop_freertos_execute_hook = &btstack_loop_hook;
     btstack_run_loop_execute();
 }
 
@@ -82,6 +102,7 @@ static void initializeBluepadAuxShadows();
 
 #if defined(TARGET_RX)
 static bool consumeLoraPacketReceived();
+static void setBluepad32TaskPriority(UBaseType_t priority);
 static void transitionToLoraOnly();
 static void transitionToBluetoothActive();
 static void refreshRxPacketTimers(uint32_t now);
@@ -130,7 +151,12 @@ void bluepad_poll()
 
     #if defined(TARGET_RX)
     // do not use Bluetooth if a real transmitter is currently communicating with us
-    if (bluepad32RxState == bluepad32_rx_state_e::loraOnly || consumeLoraPacketReceived()) {
+    if (bluepad32RxState == bluepad32_rx_state_e::loraOnly) {
+        transitionToLoraOnly();
+        return;
+    }
+
+    if (bluepad32RxState != bluepad32_rx_state_e::wifiMode && consumeLoraPacketReceived()) {
         transitionToLoraOnly();
         return;
     }
@@ -179,6 +205,12 @@ void bluepad_rx_lora_packet_received()
 {
     loraPacketReceived = true;
 }
+
+void bluepad_rx_wifi_mode()
+{
+    bluepad32RxState = bluepad32_rx_state_e::wifiMode;
+    setBluepad32TaskPriority(BLUEPAD32INIT_TASK_PRIORITY);
+}
 #endif
 
 #if defined(TARGET_TX)
@@ -226,8 +258,18 @@ static bool consumeLoraPacketReceived()
     return true;
 }
 
+static void setBluepad32TaskPriority(UBaseType_t priority)
+{
+    if (bluepad32InitTaskHandle != nullptr)
+    {
+        vTaskPrioritySet(bluepad32InitTaskHandle, priority);
+    }
+}
+
 static void transitionToLoraOnly()
 {
+    setBluepad32TaskPriority(BLUEPAD32INIT_TASK_PRIORITY_LOW);
+
     if (bluepad32RxState == bluepad32_rx_state_e::loraOnly) {
         return;
     }

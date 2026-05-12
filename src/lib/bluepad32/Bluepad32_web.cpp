@@ -217,6 +217,10 @@ void json_to_bluepad_config(JsonObjectConst obj, bluepad_cfg_t* cfg)
 
 void bluepad_setupServer(AsyncWebServer* srv)
 {
+    #if defined(TARGET_RX)
+    bluepad_rx_wifi_mode();
+    #endif
+
     srv->on("/bluepad/devices.json", HTTP_GET, bluepad_handle_devices);
     srv->on("/bluepad/paired.json", HTTP_GET, bluepad_handle_devices);
     srv->on("/bluepad/pairing/enable", HTTP_POST, [](AsyncWebServerRequest* request) {

@@ -109,6 +109,8 @@ static EventGroupHandle_t   btstack_run_loop_event_group;
 // the run loop
 static bool run_loop_exit_requested;
 
+void (*btstack_run_loop_freertos_execute_hook)(void) = NULL;
+
 static uint32_t btstack_run_loop_freertos_get_time_ms(void){
     return hal_time_ms();
 }
@@ -170,6 +172,10 @@ static void btstack_run_loop_freertos_execute(void) {
                 break;
             }
             (*callback_registration->callback)(callback_registration->context);
+        }
+
+        if (btstack_run_loop_freertos_execute_hook) {
+            btstack_run_loop_freertos_execute();
         }
 
         // process registered function calls on run loop thread (deprecated)

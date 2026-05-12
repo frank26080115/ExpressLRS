@@ -14,6 +14,7 @@ void bluepad_poll();
 void bluepad_disable();
 #if defined(TARGET_RX)
 void bluepad_rx_lora_packet_received();
+void bluepad_rx_wifi_mode();
 #endif
 #if defined(TARGET_TX)
 bool bluepad_has_recent_channel_data();
