@@ -1,4 +1,5 @@
 #include "bp32_utils.h"
+#include "bp32_utils.h"
 #include "crsf_protocol.h"
 
 static constexpr int32_t BLUEPAD32_AXIS_MIN = -512;
@@ -93,24 +94,26 @@ int32_t crsfToShadow(uint32_t crsf)
     return (int32_t)crsf * BLUEPAD32_CHANNEL_SHADOW_MULTIPLIER;
 }
 
-int32_t clampShadow(int32_t value)
+int32_t clampShadow(int32_t value, uint32_t lowerLimitCrsf)
 {
-    const int32_t shadowMin = crsfToShadow(CRSF_CHANNEL_VALUE_STD_MIN);
+    lowerLimitCrsf = clampValue(lowerLimitCrsf, CRSF_CHANNEL_VALUE_STD_MIN, CRSF_CHANNEL_VALUE_STD_MAX);
+    const int32_t shadowMin = crsfToShadow(lowerLimitCrsf);
     const int32_t shadowMax = crsfToShadow(CRSF_CHANNEL_VALUE_STD_MAX);
     return clampValue(value, shadowMin, shadowMax);
 }
 
 uint32_t shadowToCrsf(int32_t shadow)
 {
-    shadow = clampShadow(shadow);
+    shadow = clampShadow(shadow, CRSF_CHANNEL_VALUE_STD_MIN);
     return (shadow + (BLUEPAD32_CHANNEL_SHADOW_MULTIPLIER / 2)) / BLUEPAD32_CHANNEL_SHADOW_MULTIPLIER;
 }
 
-void update_servo_shadow(int32_t* data, int16_t ctl, uint32_t dt_ms)
+void update_servo_shadow(int32_t* data, int16_t ctl, uint32_t dt_ms, uint32_t lowerLimitCrsf)
 {
     ctl = clampValue(ctl, BLUEPAD32_AXIS_MIN, BLUEPAD32_AXIS_MAX);
+    lowerLimitCrsf = clampValue(lowerLimitCrsf, CRSF_CHANNEL_VALUE_STD_MIN, CRSF_CHANNEL_VALUE_STD_MAX);
 
-    const int32_t shadow_min = CRSF_CHANNEL_VALUE_STD_MIN * BLUEPAD32_CHANNEL_SHADOW_MULTIPLIER;
+    const int32_t shadow_min = lowerLimitCrsf * BLUEPAD32_CHANNEL_SHADOW_MULTIPLIER;
     const int32_t shadow_max = CRSF_CHANNEL_VALUE_STD_MAX * BLUEPAD32_CHANNEL_SHADOW_MULTIPLIER;
 
     const int32_t shadow_full_range = (CRSF_CHANNEL_VALUE_STD_MAX - CRSF_CHANNEL_VALUE_STD_MIN) * BLUEPAD32_CHANNEL_SHADOW_MULTIPLIER;
@@ -132,5 +135,13 @@ void update_servo_shadow(int32_t* data, int16_t ctl, uint32_t dt_ms)
         (*data) = shadow_min;
     } else if ((*data) > shadow_max) {
         (*data) = shadow_max;
+    }
+}
+
+void bluepad_setDefaults(bluepad_cfg_t* bluepad)
+{
+    for (uint8_t aux = 0; aux < BP_AUX_CHANNEL_COUNT; ++aux)
+    {
+        bluepad->aux_mode[aux].failsafe = US_CHANNEL_VALUE_STD_MIN;
     }
 }

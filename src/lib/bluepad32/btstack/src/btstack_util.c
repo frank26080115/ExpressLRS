@@ -248,6 +248,11 @@ void printf_hexdump(const void * data, int size){
     }
     printf("\n");
 }
+#else
+void printf_hexdump(const void * data, int size){
+    (void)data;
+    (void)size;
+}
 #endif
 
 #if defined(ENABLE_LOG_INFO) || defined(ENABLE_LOG_DEBUG)

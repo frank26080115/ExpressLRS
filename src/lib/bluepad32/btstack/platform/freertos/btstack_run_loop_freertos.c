@@ -175,7 +175,7 @@ static void btstack_run_loop_freertos_execute(void) {
         }
 
         if (btstack_run_loop_freertos_execute_hook) {
-            btstack_run_loop_freertos_execute();
+            btstack_run_loop_freertos_execute_hook();
         }
 
         // process registered function calls on run loop thread (deprecated)

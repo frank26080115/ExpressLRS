@@ -15,9 +15,7 @@ static void bluepad_auxchan_to_json(const bluepad_auxchan_cfg_t* aux, JsonObject
     }
 
     obj["actual_channel"] = aux->actual_channel;
-    #if defined(TARGET_TX)
     obj["failsafe"] = aux->failsafe;
-    #endif
     obj["analog_mode"] = aux->analog_mode;
 }
 
@@ -31,11 +29,9 @@ static void json_to_bluepad_auxchan(JsonObjectConst obj, bluepad_auxchan_cfg_t* 
         aux->actual_channel = obj["actual_channel"].as<uint8_t>();
     }
 
-    #if defined(TARGET_TX)
     if (obj["failsafe"].is<uint16_t>()) {
         aux->failsafe = obj["failsafe"].as<uint16_t>();
     }
-    #endif
 
     if (obj["analog_mode"].is<uint8_t>()) {
         aux->analog_mode = obj["analog_mode"].as<uint8_t>();

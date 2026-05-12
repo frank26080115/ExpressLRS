@@ -776,6 +776,9 @@ TxConfig::SetDefaults(bool commit)
 
     m_config.version = TX_CONFIG_VERSION | TX_CONFIG_MAGIC;
     m_config.powerFanThreshold = PWR_250mW;
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    bluepad_setDefaults(&m_config.bluepad);
+    #endif
     m_modified = ALL_CHANGED;
 
     // Set defaults for button 1
@@ -1316,6 +1319,9 @@ RxConfig::SetDefaults(bool commit)
     m_config.deny_meta = deny_meta_cached;
     m_config.modelId = 0xff;
     m_config.power = POWERMGNT::getDefaultPower();
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    bluepad_setDefaults(&m_config.bluepad);
+    #endif
 
     if (firmwareOptions.hasUID)
         memcpy(m_config.uid, firmwareOptions.uid, UID_LEN);

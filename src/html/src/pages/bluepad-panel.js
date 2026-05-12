@@ -57,7 +57,7 @@ const ANALOG_MODE_OPTIONS = [
 const BUTTON_MODE_OPTIONS = [
     'Do Nothing',
     'Tap to Set and Latch',
-    'Set While Held, Release to Failsafe',
+    'Set While Held, Release to Home',
     'Tap to Increment',
     'Tap to Decrement',
 ];
@@ -77,6 +77,9 @@ const BUTTONS = [
 
 const CHANNEL_OPTIONS = ['Unused', 'CH1', 'CH2', 'CH3', 'CH4', 'CH5', 'CH6', 'CH7', 'CH8', 'CH9', 'CH10', 'CH11', 'CH12', 'CH13', 'CH14', 'CH15', 'CH16'];
 const PAIRED_DEVICE_POLL_MS = 3000;
+const BLUEPAD_HOME_US_MIN = 988;
+const BLUEPAD_HOME_US_MAX = 2012;
+const BLUEPAD_HOME_US_DEFAULT = 988;
 
 @customElement('bluepad-panel')
 class BluepadPanel extends LitElement {
@@ -208,7 +211,7 @@ class BluepadPanel extends LitElement {
                     <tr>
                         <th>Aux</th>
                         <th>Actual Channel</th>
-                        <th>Failsafe</th>
+                        <th>Home Pos.</th>
                         <th>Analog Mode</th>
                     </tr>
                 </thead>
@@ -296,13 +299,9 @@ class BluepadPanel extends LitElement {
     }
 
     renderFailsafeInput(aux, index) {
-        if (!this.usesTxFailsafe()) {
-            return html`<span>PWM failsafe</span>`;
-        }
-
         return html`
             <div class="mui-textfield compact">
-                <input type="number" min="750" max="2250" .value="${String(aux.failsafe)}" @change="${(event) => this.updateAux(index, 'failsafe', event.target.value)}">
+                <input type="number" min="${BLUEPAD_HOME_US_MIN}" max="${BLUEPAD_HOME_US_MAX}" .value="${String(aux.failsafe)}" @change="${(event) => this.updateAux(index, 'failsafe', event.target.value)}">
             </div>
         `;
     }
@@ -448,7 +447,7 @@ class BluepadPanel extends LitElement {
         } else if (key === 'analog_mode') {
             aux.analog_mode = this.toInt(value, 0, ANALOG_MODE_OPTIONS.length - 1, 0);
         } else if (key === 'failsafe') {
-            aux.failsafe = this.toInt(value, 750, 2250, 988);
+            aux.failsafe = this.toInt(value, BLUEPAD_HOME_US_MIN, BLUEPAD_HOME_US_MAX, BLUEPAD_HOME_US_DEFAULT);
         }
         this.requestUpdate();
     }
@@ -509,12 +508,10 @@ class BluepadPanel extends LitElement {
                 }
             }
 
-            if (this.usesTxFailsafe()) {
-                if ((aux.analog_mode === 1 || aux.analog_mode === 2) && (aux.failsafe < 1400 || aux.failsafe > 1600)) {
-                    warnings.push(`${label} direct stick mode expects a failsafe near 1500.`);
-                } else if (aux.analog_mode >= 3 && aux.analog_mode <= 8 && aux.failsafe > 1100) {
-                    warnings.push(`${label} relative/trigger mode usually expects a low failsafe near 988.`);
-                }
+            if ((aux.analog_mode === 1 || aux.analog_mode === 2) && (aux.failsafe < 1400 || aux.failsafe > 1600)) {
+                warnings.push(`${label} direct stick mode expects a home position near 1500.`);
+            } else if (aux.analog_mode >= 3 && aux.analog_mode <= 8 && aux.failsafe > 1100) {
+                warnings.push(`${label} relative/trigger mode usually expects a low home position near 988.`);
             }
         });
 
@@ -553,11 +550,9 @@ class BluepadPanel extends LitElement {
     sanitizeAux(inputAux) {
         const aux = {
             actual_channel: this.toInt(inputAux.actual_channel, 0, 16, 0),
+            failsafe: this.toInt(inputAux.failsafe, BLUEPAD_HOME_US_MIN, BLUEPAD_HOME_US_MAX, BLUEPAD_HOME_US_DEFAULT),
             analog_mode: this.toInt(inputAux.analog_mode, 0, ANALOG_MODE_OPTIONS.length - 1, 0),
         };
-        if (this.usesTxFailsafe() || inputAux.failsafe !== undefined) {
-            aux.failsafe = this.toInt(inputAux.failsafe, 750, 2250, 988);
-        }
         return aux;
     }
 
@@ -567,10 +562,6 @@ class BluepadPanel extends LitElement {
             mode: this.toInt(inputButton.mode, 0, BUTTON_MODE_OPTIONS.length - 1, 0),
             value: this.toInt(inputButton.value, 0, 2500, 0),
         };
-    }
-
-    usesTxFailsafe() {
-        return elrsState.settings['module-type'] === 'TX';
     }
 
     isFeatureAvailable() {

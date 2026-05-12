@@ -21,9 +21,7 @@ There are two of these. Each one can be assigned to any actual CRSF channel.
 
 This is meant for aircraft throttle, or robot combat weapon throttle, or servos, etc.
 
-On a RX platform, the failsafe value is linked to the PWM failsafe setting for whichever slow is mapped to that channel.
-
-On a TX platform, the user can set a failsafe value.
+The user can set a failsafe value.
 
 The `START` button always makes channels go back to failsafe value
 

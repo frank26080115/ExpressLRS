@@ -21,9 +21,9 @@
 #define ENABLE_HCI_CONTROLLER_TO_HOST_FLOW_CONTROL
 
 // BTstack features that can be enabled
-#define ENABLE_PRINTF_HEXDUMP
-#define ENABLE_LOG_ERROR
-#define ENABLE_LOG_INFO
+// #define ENABLE_PRINTF_HEXDUMP
+// #define ENABLE_LOG_ERROR
+// #define ENABLE_LOG_INFO
 
 // Enable Classic/LE based on esp-idf sdkconfig
 #include "bp32_config_shim.h" // #include "sdkconfig.h"

@@ -99,6 +99,7 @@ static bool hasRecentControllerData(uint32_t now);
 static void handleControllerData(uint32_t now);
 static void loadBluepadFailsafeValues();
 static void initializeBluepadAuxShadows();
+static uint32_t getAuxLowerLimitCrsf(uint8_t aux_num);
 
 #if defined(TARGET_RX)
 static bool consumeLoraPacketReceived();
@@ -388,37 +389,10 @@ static void loadBluepadFailsafeValues()
         return;
     }
 
-    #if defined(TARGET_RX) && defined(GPIO_PIN_PWM_OUTPUTS)
-    for (uint8_t aux_num = 0; aux_num < BP_AUX_CHANNEL_COUNT; ++aux_num)
-    {
-        const bluepad_auxchan_cfg_t* auxConfig = &bluepadConfig->aux_mode[aux_num];
-        if (auxConfig->actual_channel == 0)
-        {
-            continue;
-        }
-
-        const uint8_t inputChannel = auxConfig->actual_channel - 1;
-        for (uint8_t pwmChannel = 0; pwmChannel < GPIO_PIN_PWM_OUTPUTS_COUNT; ++pwmChannel)
-        {
-            const rx_config_pwm_t* pwmConfig = config.GetPwmChannel(pwmChannel);
-            if (pwmConfig->val.inputChannel != inputChannel)
-            {
-                continue;
-            }
-
-            if (pwmConfig->val.failsafeMode == PWMFAILSAFE_SET_POSITION)
-            {
-                failsafe_values[aux_num] = usToCrsfValue(pwmConfig->val.failsafe + US_CHANNEL_VALUE_MIN);
-            }
-            break;
-        }
-    }
-    #elif defined(TARGET_TX)
     for (uint8_t aux_num = 0; aux_num < BP_AUX_CHANNEL_COUNT; ++aux_num)
     {
         failsafe_values[aux_num] = usToCrsfValue(bluepadConfig->aux_mode[aux_num].failsafe);
     }
-    #endif
 }
 
 static void initializeBluepadAuxShadows()
@@ -429,6 +403,22 @@ static void initializeBluepadAuxShadows()
         ChannelDataShadow[aux_num] = crsfToShadow(
             failsafe == CRSF_CHANNEL_VALUE_UNSET ? CRSF_CHANNEL_VALUE_MID : failsafe);
     }
+}
+
+static uint32_t getAuxLowerLimitCrsf(uint8_t aux_num)
+{
+    if (aux_num >= BP_AUX_CHANNEL_COUNT)
+    {
+        return CRSF_CHANNEL_VALUE_STD_MIN;
+    }
+
+    const uint32_t failsafe = failsafe_values[aux_num];
+    if (failsafe != CRSF_CHANNEL_VALUE_UNSET && failsafe <= usToCrsfValue(1100))
+    {
+        return failsafe;
+    }
+
+    return CRSF_CHANNEL_VALUE_STD_MIN;
 }
 
 static bool processGamepad(ControllerPtr ctl)
@@ -521,6 +511,7 @@ static bool processGamepad(ControllerPtr ctl)
     for (uint8_t aux_num = 0; aux_num < 2; aux_num++)
     {
         const bluepad_auxchan_cfg_t* ap = &(bluepadConfig->aux_mode[aux_num]);
+        const uint32_t lowerLimitCrsf = getAuxLowerLimitCrsf(aux_num);
         if (ap->actual_channel == 0) {
             continue;
         }
@@ -536,10 +527,10 @@ static bool processGamepad(ControllerPtr ctl)
                 ChannelDataShadow[aux_num] = crsfToShadow(axisToCrsf(ctl->axisRY(), true));
                 break;
             case BP_ANALOGCTRL_LEFTSTICK_Y_RELATIVE:
-                update_servo_shadow(&ChannelDataShadow[aux_num], ctl->axisY(), dt);
+                update_servo_shadow(&ChannelDataShadow[aux_num], ctl->axisY(), dt, lowerLimitCrsf);
                 break;
             case BP_ANALOGCTRL_RIGHTSTICK_Y_RELATIVE:
-                update_servo_shadow(&ChannelDataShadow[aux_num], ctl->axisRY(), dt);
+                update_servo_shadow(&ChannelDataShadow[aux_num], ctl->axisRY(), dt, lowerLimitCrsf);
                 break;
             case BP_ANALOGCTRL_LEFTTRIGGER_DIRECT:
                 ChannelDataShadow[aux_num] = crsfToShadow(triggerToCrsf(ctl->brake()));
@@ -549,7 +540,7 @@ static bool processGamepad(ControllerPtr ctl)
                 break;
             case BP_ANALOGCTRL_LEFTTRIGGER_LOWER_RIGHTTRIGGER_RAISE:
             case BP_ANALOGCTRL_RIGHTTRIGGER_LOWER_LEFTTRIGGER_RAISE:
-                update_servo_shadow(&ChannelDataShadow[aux_num], (ctl->throttle() - ctl->brake()) * ((ap->analog_mode == BP_ANALOGCTRL_RIGHTTRIGGER_LOWER_LEFTTRIGGER_RAISE) ? 1 : -1), dt);
+                update_servo_shadow(&ChannelDataShadow[aux_num], (ctl->throttle() - ctl->brake()) * ((ap->analog_mode == BP_ANALOGCTRL_RIGHTTRIGGER_LOWER_LEFTTRIGGER_RAISE) ? 1 : -1), dt, lowerLimitCrsf);
                 break;
         }
     }
@@ -596,7 +587,7 @@ static bool processGamepad(ControllerPtr ctl)
                     else if (bp->mode == BP_BUTTONCTRL_DECREMENT) {
                         ChannelDataShadow[aux_num] -= delta;
                     }
-                    ChannelDataShadow[aux_num] = clampShadow(ChannelDataShadow[aux_num]);
+                    ChannelDataShadow[aux_num] = clampShadow(ChannelDataShadow[aux_num], getAuxLowerLimitCrsf(aux_num));
                 }
                 break;
         }
@@ -644,6 +635,9 @@ static bool processControllers()
         if (myController && myController->isConnected() && myController->hasData()) {
             if (myController->isGamepad()) {
                 success |= processGamepad(myController);
+            }
+            else {
+                // consider disconnection or unpairing
             }
         }
     }

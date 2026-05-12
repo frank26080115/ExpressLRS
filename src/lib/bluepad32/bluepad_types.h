@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <stdbool.h>
 
 enum : uint8_t
 {
@@ -82,9 +81,7 @@ enum : uint8_t
 typedef struct __attribute__((packed))
 {
     uint8_t actual_channel; // 0 means unused, 1 indexed, reminder, ChannelData is 0 indexed
-    #if defined(TARGET_TX)
     uint16_t failsafe;   // unit in microseconds
-    #endif
     uint8_t analog_mode; // BP_ANALOGCTRL_*
 }
 bluepad_auxchan_cfg_t;
@@ -104,6 +101,8 @@ typedef struct __attribute__((packed))
     bluepad_btn_cfg_t     btn_mode[BP_BUTTON_CONFIG_COUNT];
 }
 bluepad_cfg_t;
+
+extern void bluepad_setDefaults(bluepad_cfg_t* bluepad);
 
 static inline uint16_t bluepad_main_mode_occupancy(uint8_t mode)
 {
