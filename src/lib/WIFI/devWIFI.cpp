@@ -1840,7 +1840,7 @@ static void HandleWebUpdate()
         {
           const uint8_t channel = webbe_getRandomWifiChannel();
           const char *ssid = makeUniqueSsid();
-          const bool apStarted = WiFi.softAP(ssid, wifi_ap_password, channel, false, 4);
+          const bool apStarted = WiFi.softAP(ssid, wifi_ap_password, channel, false, 1);
           BLUEPAD_WIFI_DEBUG_PRINTF("WiFi: softAP ssid=%s channel=%u result=%u ip=%s free_heap=%u\n",
                                     ssid,
                                     channel,

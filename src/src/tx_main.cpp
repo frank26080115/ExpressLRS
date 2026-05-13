@@ -55,7 +55,7 @@ Crc2Byte ota_crc;
 FIFO<AP_MAX_BUF_LEN> apInputBuffer;
 FIFO<AP_MAX_BUF_LEN> apOutputBuffer;
 
-#define UART_INPUT_BUF_LEN 1024
+#define UART_INPUT_BUF_LEN 512
 FIFO<UART_INPUT_BUF_LEN> uartInputBuffer;
 
 uint8_t mavlinkSSBuffer[CRSF_MAX_PACKET_LEN]; // Buffer for current stubbon sender packet (mavlink only)
