@@ -271,7 +271,7 @@ uint8_t webbe_getRandomWifiChannel()
     /*
     to combat Wi-Fi channel congestion, Wi-Fi channel is randomly selected every time
     */
-    uint32_t bootRand =
+    uint32_t rawRand =
     #if defined(PLATFORM_ESP32)
         esp_random()
     #elif defined(PLATFORM_ESP8266)
@@ -279,7 +279,21 @@ uint8_t webbe_getRandomWifiChannel()
     #else
         rand() // this should not be used, unsupported platform
     #endif
-        ^ micros() ^ millis();
+        ;
+    const uint32_t microsNow = micros();
+    const uint32_t millisNow = millis();
+    const uint32_t bootRand = rawRand ^ microsNow ^ millisNow;
     static const uint8_t channels[] = {1, 6, 11};
-    return channels[bootRand % 3];
+    const uint8_t channelIndex = bootRand % (sizeof(channels) / sizeof(channels[0]));
+    const uint8_t channel = channels[channelIndex];
+    #if defined(BUILD_BLUEPAD32) && defined(ENABLE_BLUEPAD32_DEBUG)
+    printf("WiFi channel RNG: raw=%08x micros=%u millis=%u mixed=%08x index=%u channel=%u\n",
+           rawRand,
+           microsNow,
+           millisNow,
+           bootRand,
+           channelIndex,
+           channel);
+    #endif
+    return channel;
 }
