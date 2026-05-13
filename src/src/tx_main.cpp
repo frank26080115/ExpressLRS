@@ -113,7 +113,9 @@ device_affinity_t ui_devices[] = {
   {&Button_device, 0},
 #if defined(PLATFORM_ESP32)
   {&Backpack_device, 0},
+#if !defined(BUILD_BLUEPAD32)
   {&BLE_device, 0},
+#endif
 #if !defined(PLATFORM_ESP32_C3)
   {&Screen_device, 0},
   {&Gsensor_device, 0},
@@ -1531,7 +1533,9 @@ void setup()
   }
 
   #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+  DBGLN("heap before bluepad init: %u", ESP.getFreeHeap());
   bluepad_init();
+  DBGLN("heap after bluepad init: %u", ESP.getFreeHeap());
   #endif
 }
 

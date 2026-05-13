@@ -15,6 +15,7 @@
 bool bluepad_init();
 void bluepad_poll();
 void bluepad_disable();
+void bluepad_wifi_mode();
 #if defined(TARGET_RX)
 void bluepad_rx_lora_packet_received();
 void bluepad_rx_wifi_mode();
@@ -28,6 +29,9 @@ extern SemaphoreHandle_t bluepadBtstackRequestSignal;
 extern SemaphoreHandle_t bluepadBtstackDoneSignal;
 extern volatile bool bluepadBtstackHookReady;
 extern volatile bool bluepadBtstackRequestPending;
+extern bluepad_cfg_t bluepadTemporaryConfig;
+extern bool bluepadTemporaryConfigValid;
+extern bool bluepadTemporaryConfigUpdated;
 
 #define BLUEPAD_BTSTACK_DO_UNSAFE(code) do { \
     if (bluepadBtstackHookReady && bluepadBtstackAccessMutex != nullptr && \

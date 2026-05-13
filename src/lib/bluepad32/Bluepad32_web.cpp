@@ -2,6 +2,7 @@
 
 #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
 
+#include <AsyncJson.h>
 #include <ESPAsyncWebServer.h>
 
 #include <ArduinoBluepad32.h>
@@ -107,6 +108,36 @@ static const AsyncWebParameter* bluepad_find_address_param(AsyncWebServerRequest
     return nullptr;
 }
 
+static const AsyncWebParameter* bluepad_find_param(AsyncWebServerRequest* request, const char* name)
+{
+    if (request->hasParam(name)) {
+        return request->getParam(name);
+    }
+    if (request->hasParam(name, true)) {
+        return request->getParam(name, true);
+    }
+    return nullptr;
+}
+
+static bool bluepad_parse_bool_param(const String& value, bool* enabled)
+{
+    if (value == "1" || value.equalsIgnoreCase("true") || value.equalsIgnoreCase("enable")
+        || value.equalsIgnoreCase("enabled") || value.equalsIgnoreCase("on"))
+    {
+        *enabled = true;
+        return true;
+    }
+
+    if (value == "0" || value.equalsIgnoreCase("false") || value.equalsIgnoreCase("disable")
+        || value.equalsIgnoreCase("disabled") || value.equalsIgnoreCase("off"))
+    {
+        *enabled = false;
+        return true;
+    }
+
+    return false;
+}
+
 static bool bluepad_parse_bd_addr(const String& value, bd_addr_t address)
 {
     return sscanf_bd_addr(value.c_str(), address) != 0;
@@ -129,7 +160,7 @@ static void bluepad_add_paired_devices(JsonArray devices)
 
                 for (int i = 0; i < BP32_MAX_GAMEPADS; ++i) {
                     ControllerPtr controller = myControllers[i];
-                    if (controller == nullptr || !controller->isConnected()) {
+                    if (controller == nullptr || !controller->isConnected() || !controller->isGamepad()) {
                         continue;
                     }
 
@@ -161,8 +192,23 @@ static void bluepad_handle_devices(AsyncWebServerRequest* request)
     bluepad_send_json(request, doc);
 }
 
-static void bluepad_handle_pairing(AsyncWebServerRequest* request, bool enabled)
+static void bluepad_handle_pairing(AsyncWebServerRequest* request)
 {
+    const AsyncWebParameter* param = bluepad_find_param(request, "enabled");
+    if (param == nullptr) {
+        param = bluepad_find_param(request, "enable");
+    }
+    if (param == nullptr) {
+        bluepad_send_status(request, false, "Missing pairing state", 400);
+        return;
+    }
+
+    bool enabled = false;
+    if (!bluepad_parse_bool_param(param->value(), &enabled)) {
+        bluepad_send_status(request, false, "Invalid pairing state", 400);
+        return;
+    }
+
     BLUEPAD_BTSTACK_DO_UNSAFE({
         uni_bt_enable_new_connections_unsafe(enabled);
     });
@@ -174,6 +220,14 @@ static void bluepad_handle_delete_device(AsyncWebServerRequest* request)
     const AsyncWebParameter* param = bluepad_find_address_param(request);
     if (param == nullptr) {
         bluepad_send_status(request, false, "Missing Bluetooth address", 400);
+        return;
+    }
+
+    if (param->value().equalsIgnoreCase("all")) {
+        BLUEPAD_BTSTACK_DO_UNSAFE({
+            uni_bt_del_keys_unsafe();
+        });
+        bluepad_send_status(request, true, "All paired devices deleted");
         return;
     }
 
@@ -189,12 +243,33 @@ static void bluepad_handle_delete_device(AsyncWebServerRequest* request)
     bluepad_send_status(request, true, "Paired device deleted");
 }
 
-static void bluepad_handle_delete_all_devices(AsyncWebServerRequest* request)
+static void bluepad_handle_temporary_config(AsyncWebServerRequest* request, JsonVariant& json)
 {
-    BLUEPAD_BTSTACK_DO_UNSAFE({
-        uni_bt_del_keys_unsafe();
-    });
-    bluepad_send_status(request, true, "All paired devices deleted");
+    JsonObjectConst root = json.as<JsonObjectConst>();
+    if (root.isNull()) {
+        bluepad_send_status(request, false, "Invalid Bluepad config", 400);
+        return;
+    }
+
+    JsonObjectConst cfg = root;
+    if (root["bluepad"].is<JsonObjectConst>()) {
+        cfg = root["bluepad"].as<JsonObjectConst>();
+    }
+    else if (root["config"]["bluepad"].is<JsonObjectConst>()) {
+        cfg = root["config"]["bluepad"].as<JsonObjectConst>();
+    }
+
+    bluepad_setDefaults(&bluepadTemporaryConfig);
+    json_to_bluepad_config(cfg, &bluepadTemporaryConfig);
+    bluepadTemporaryConfigValid = true;
+    bluepadTemporaryConfigUpdated = true;
+
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["message"] = "Temporary Bluepad config updated";
+    doc["temporary"] = true;
+    bluepad_config_to_json(&bluepadTemporaryConfig, doc["bluepad"].to<JsonObject>());
+    bluepad_send_json(request, doc);
 }
 
 void bluepad_config_to_json(const bluepad_cfg_t* cfg, JsonObject obj)
@@ -243,20 +318,15 @@ void json_to_bluepad_config(JsonObjectConst obj, bluepad_cfg_t* cfg)
 
 void bluepad_setupServer(AsyncWebServer* srv)
 {
-    #if defined(TARGET_RX)
-    bluepad_rx_wifi_mode();
-    #endif
+    bluepad_wifi_mode();
 
     srv->on("/bluepad/devices.json", HTTP_GET, bluepad_handle_devices);
-    srv->on("/bluepad/paired.json", HTTP_GET, bluepad_handle_devices);
-    srv->on("/bluepad/pairing/enable", HTTP_POST, [](AsyncWebServerRequest* request) {
-        bluepad_handle_pairing(request, true);
-    });
-    srv->on("/bluepad/pairing/disable", HTTP_POST, [](AsyncWebServerRequest* request) {
-        bluepad_handle_pairing(request, false);
-    });
+    srv->on("/bluepad/pairing", HTTP_POST, bluepad_handle_pairing);
     srv->on("/bluepad/devices/delete", HTTP_POST, bluepad_handle_delete_device);
-    srv->on("/bluepad/devices/delete-all", HTTP_POST, bluepad_handle_delete_all_devices);
+
+    auto* temporaryConfigHandler = new AsyncCallbackJsonWebHandler("/bluepad/config.json", bluepad_handle_temporary_config);
+    temporaryConfigHandler->setMethod(HTTP_POST);
+    srv->addHandler(temporaryConfigHandler);
 }
 
 #endif

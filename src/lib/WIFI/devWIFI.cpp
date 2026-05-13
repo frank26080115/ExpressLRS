@@ -958,7 +958,7 @@ static void WebUploadResponseHandler(AsyncWebServerRequest *request) {
 static void WebUploadDataHandler(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
   force_update = force_update || request->hasArg("force");
   if (index == 0) {
-    #if defined(TARGET_TX) && defined(PLATFORM_ESP32)
+    #if defined(TARGET_TX) && defined(PLATFORM_ESP32) && !defined(BUILD_BLUEPAD32)
       WifiJoystick::StopJoystickService();
     #endif
 
@@ -1027,7 +1027,7 @@ static void WebUploadForceUpdateHandler(AsyncWebServerRequest *request) {
   }
 }
 
-#if defined(TARGET_TX) && defined(PLATFORM_ESP32)
+#if defined(TARGET_TX) && defined(PLATFORM_ESP32) && !defined(BUILD_BLUEPAD32)
 static void WebUdpControl(AsyncWebServerRequest *request)
 {
   const String &action = request->arg("action");
@@ -1425,7 +1425,7 @@ static void startServices()
   server.on("/options.json", HTTP_GET, getFile);
   server.on("/reboot", HandleReboot);
   server.on("/reset", HandleReset);
-  #if defined(TARGET_TX) && defined(PLATFORM_ESP32)
+  #if defined(TARGET_TX) && defined(PLATFORM_ESP32) && !defined(BUILD_BLUEPAD32)
     server.on("/udpcontrol", HTTP_POST, WebUdpControl);
   #endif
 
@@ -1459,7 +1459,7 @@ static void startServices()
 
   startMDNS();
 
-  #if defined(TARGET_TX) && defined(PLATFORM_ESP32)
+  #if defined(TARGET_TX) && defined(PLATFORM_ESP32) && !defined(BUILD_BLUEPAD32)
     WifiJoystick::StartJoystickService();
   #endif
 
@@ -1506,6 +1506,7 @@ static void HandleWebUpdate()
         #if defined(PLATFORM_ESP32)
         WiFi.setHostname(wifi_hostname); // hostname must be set before the mode is set to STA
         #endif
+        DBGLN("heap before wifi mode: %u", ESP.getFreeHeap());
         WiFi.mode(wifiMode);
         #if defined(PLATFORM_ESP8266)
         WiFi.setHostname(wifi_hostname); // hostname must be set before the mode is set to STA
@@ -1519,6 +1520,7 @@ static void HandleWebUpdate()
         #endif
         WiFi.softAPConfig(ipAddress, ipAddress, netMsk);
         WiFi.softAP(makeUniqueSsid(), wifi_ap_password, webbe_getRandomWifiChannel(), false, 4);
+        DBGLN("heap after wifi start AP: %u", ESP.getFreeHeap());
         startServices();
         break;
       case WIFI_STA:
@@ -1566,7 +1568,7 @@ static void HandleWebUpdate()
       MDNS.update();
     #endif
 
-    #if defined(TARGET_TX) && defined(PLATFORM_ESP32)
+    #if defined(TARGET_TX) && defined(PLATFORM_ESP32) && !defined(BUILD_BLUEPAD32)
       WifiJoystick::Loop(now);
     #endif
   }

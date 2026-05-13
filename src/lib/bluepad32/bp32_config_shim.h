@@ -77,11 +77,12 @@
 /* Controller Capacity                                                         */
 /* -------------------------------------------------------------------------- */
 
-/* Maximum simultaneously connected controllers.  Two leaves room for a primary
- * gamepad plus a second paired device while keeping static RAM modest.
+/* Maximum simultaneously connected controllers.  ExpressLRS consumes a single
+ * gamepad as the control input, so keep the live controller capacity to one to
+ * leave heap for WiFi and the web server.
  */
 #ifndef CONFIG_BLUEPAD32_MAX_DEVICES
-#define CONFIG_BLUEPAD32_MAX_DEVICES 2
+#define CONFIG_BLUEPAD32_MAX_DEVICES 1
 #endif
 
 /* Maximum Bluetooth allowlist entries stored by Bluepad32.  Keep this at least

@@ -2,7 +2,7 @@
 
 #include "wifiJoystick.h"
 
-#if defined(TARGET_TX) && defined(PLATFORM_ESP32)
+#if defined(TARGET_TX) && defined(PLATFORM_ESP32) && !defined(BUILD_BLUEPAD32)
 
 #include "handset.h"
 #include "crsf_protocol.h"
@@ -10,6 +10,7 @@
 #include "options.h"
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <new>
 
 #if defined(RADIO_SX127X)
 extern SX127xDriver Radio;
@@ -36,7 +37,11 @@ void WifiJoystick::StartJoystickService()
 {
     if (!udp)
     {
-        udp = new WiFiUDP();
+        udp = new (std::nothrow) WiFiUDP();
+        if (!udp)
+        {
+            return;
+        }
         udp->begin(JOYSTICK_PORT);
     }
 }
@@ -115,7 +120,10 @@ void WifiJoystick::Loop(unsigned long now)
             .name_len = (uint8_t)strlen(device_name)
         };
 
-       udp->beginPacket(IPAddress(255, 255, 255, 255), JOYSTICK_PORT);
+       if (!udp->beginPacket(IPAddress(255, 255, 255, 255), JOYSTICK_PORT))
+       {
+           return;
+       }
        udp->write((uint8_t*)&eua, sizeof(eua));
        udp->write((uint8_t*)device_name, eua.name_len);
        udp->endPacket();
@@ -129,7 +137,12 @@ void WifiJoystick::UpdateValues()
         return;
     }
 
-    udp->beginPacket(remoteIP, JOYSTICK_PORT);
+    if (!udp->beginPacket(remoteIP, JOYSTICK_PORT))
+    {
+        failedCount++;
+        active = failedCount < JOYSTICK_MAX_SEND_ERROR_COUNT;
+        return;
+    }
     udp->write(WifiJoystick::FRAME_CHANNELS);
     udp->write(channelCount);
     for (uint8_t i = 0; i < channelCount; i++)

@@ -1,6 +1,6 @@
 #include "devBLE.h"
 
-#if defined(PLATFORM_ESP32)
+#if defined(PLATFORM_ESP32) && !defined(BUILD_BLUEPAD32)
 
 #include "handset.h"
 #include "crsf_protocol.h"

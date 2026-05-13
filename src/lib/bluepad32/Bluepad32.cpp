@@ -6,6 +6,8 @@
 #include "common.h"
 
 #include <Arduino.h>
+#include <stdio.h>
+#include <string.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -22,6 +24,7 @@
 #include "controller/uni_gamepad.h"
 #include "uni.h"
 #include "uni_virtual_device.h"
+#include "WebBackend.h"
 #if defined(TARGET_TX)
 #include "handset.h"
 #endif
@@ -40,12 +43,14 @@ extern void custommixer_mix();
 extern void servoNewChannelsAvailable();
 #endif
 
-static constexpr uint32_t BLUEPAD32INIT_TASK_STACK_SIZE = 8192;
+static constexpr uint32_t BLUEPAD32INIT_TASK_STACK_SIZE = 6144; // 8192;
 static constexpr UBaseType_t BLUEPAD32INIT_TASK_PRIORITY = 1;
 static constexpr UBaseType_t BLUEPAD32INIT_TASK_PRIORITY_LOW = 0;
 static constexpr BaseType_t BLUEPAD32INIT_TASK_CORE = 1;
 static constexpr size_t BLUEPAD32_CRSF_NUM_CHANNELS = 16;
 static constexpr uint32_t BLUEPAD32_DISCONNECT_TIMEOUT_MS = 1000;
+static constexpr size_t BLUEPAD32_WEB_DATA_COUNT = CRSF_NUM_CHANNELS * 2U + 1U;
+static constexpr size_t BLUEPAD32_WEB_BUFFER_SIZE = 512U;
 
 static TaskHandle_t bluepad32InitTaskHandle = nullptr;
 
@@ -54,6 +59,10 @@ static uint32_t lastControllerDataMillis = 0;
 ControllerPtr myControllers[BP32_MAX_GAMEPADS] = {};
 static bool hasControllerData = false;
 static const bluepad_cfg_t* bluepadConfig = nullptr;
+static bool bluepadWifiMode = false;
+bluepad_cfg_t bluepadTemporaryConfig = {};
+bool bluepadTemporaryConfigValid = false;
+bool bluepadTemporaryConfigUpdated = false;
 
 static uint16_t btn_was_pressed = 0; // bit flags
 
@@ -116,6 +125,7 @@ static void handleControllerData(uint32_t now);
 static void loadBluepadFailsafeValues();
 static void initializeBluepadAuxShadows();
 static uint32_t getAuxLowerLimitCrsf(uint8_t aux_num);
+static void sendToWeb();
 
 #if defined(TARGET_RX)
 static bool consumeLoraPacketReceived();
@@ -137,6 +147,8 @@ static void setBluepad32ConnectionState(connectionState_e newState)
 
 bool bluepad_init()
 {
+    //Serial.begin(115200, SERIAL_8N1, U0RXD_GPIO_NUM, U0TXD_GPIO_NUM);
+
     if (bluepad32InitTaskHandle != nullptr)
     {
         return true;
@@ -190,12 +202,10 @@ void bluepad_poll()
 
     #if defined(TARGET_RX)
     // do not use Bluetooth if a real transmitter is currently communicating with us
-    if (bluepad32RxState == bluepad32_rx_state_e::loraOnly) {
-        transitionToLoraOnly();
-        return;
-    }
-
-    if (bluepad32RxState != bluepad32_rx_state_e::wifiMode && consumeLoraPacketReceived()) {
+    if (bluepad32RxState == bluepad32_rx_state_e::loraOnly
+        || (bluepad32RxState != bluepad32_rx_state_e::wifiMode && consumeLoraPacketReceived())
+    )
+    {
         transitionToLoraOnly();
         return;
     }
@@ -205,6 +215,17 @@ void bluepad_poll()
     bool dataUpdated = BP32.update();
     if (dataUpdated) {
         dataUpdated = processControllers();
+    }
+
+    // if we are in wifi mode, then send data to the front-end
+    if (bluepadWifiMode) {
+        if (bluepadTemporaryConfigValid && bluepadTemporaryConfigUpdated) {
+            bluepadConfig = &bluepadTemporaryConfig;
+            bluepadTemporaryConfigUpdated = false;
+            loadBluepadFailsafeValues();
+        }
+
+        sendToWeb();
     }
 
     const uint32_t now = millis();
@@ -239,6 +260,16 @@ void bluepad_disable()
     #endif
 }
 
+void bluepad_wifi_mode()
+{
+    bluepadWifiMode = true;
+
+    #if defined(TARGET_RX)
+    bluepad32RxState = bluepad32_rx_state_e::wifiMode;
+    setBluepad32TaskPriority(BLUEPAD32INIT_TASK_PRIORITY);
+    #endif
+}
+
 #if defined(TARGET_RX)
 void bluepad_rx_lora_packet_received()
 {
@@ -247,8 +278,7 @@ void bluepad_rx_lora_packet_received()
 
 void bluepad_rx_wifi_mode()
 {
-    bluepad32RxState = bluepad32_rx_state_e::wifiMode;
-    setBluepad32TaskPriority(BLUEPAD32INIT_TASK_PRIORITY);
+    bluepad_wifi_mode();
 }
 #endif
 
@@ -308,6 +338,7 @@ static void setBluepad32TaskPriority(UBaseType_t priority)
 static void transitionToLoraOnly()
 {
     setBluepad32TaskPriority(BLUEPAD32INIT_TASK_PRIORITY_LOW);
+    bluepadWifiMode = false;
 
     if (bluepad32RxState == bluepad32_rx_state_e::loraOnly) {
         return;
@@ -458,6 +489,71 @@ static uint32_t getAuxLowerLimitCrsf(uint8_t aux_num)
     }
 
     return CRSF_CHANNEL_VALUE_STD_MIN;
+}
+
+static void sendToWeb()
+{
+    uint32_t now = millis();
+
+    // rate limit
+    static uint32_t last_time = 0;
+    if ((now - last_time) <= 100) {
+        return;
+    }
+    last_time = now;
+
+    int32_t data[BLUEPAD32_WEB_DATA_COUNT];
+    memset(data, 0, sizeof(data));
+
+    for (auto ctl : myControllers) {
+        if (ctl && ctl->isConnected() && ctl->hasData() && ctl->isGamepad()) {
+            data[ 0] = ctl->axisX();
+            data[ 1] = ctl->axisY();
+            data[ 2] = ctl->axisRX();
+            data[ 3] = ctl->axisRY();
+            data[ 4] = ctl->brake();
+            data[ 5] = ctl->throttle();
+            data[ 6] = ctl->a();
+            data[ 7] = ctl->b();
+            data[ 8] = ctl->x();
+            data[ 9] = ctl->y();
+            data[10] = ctl->l1();
+            data[11] = ctl->r1();
+            data[12] = ctl->thumbL();
+            data[13] = ctl->thumbR();
+            data[14] = ctl->dpad();
+            data[BLUEPAD32_WEB_DATA_COUNT - 1] = 1;
+        }
+    }
+
+    // copy processed channel data so it gets surfaced to front-end
+    for (int i = 0; i < CRSF_NUM_CHANNELS; i++)
+    {
+        data[CRSF_NUM_CHANNELS + i] = ChannelData[i];
+    }
+    char buffer[BLUEPAD32_WEB_BUFFER_SIZE];
+    size_t offset = 0;
+    int written = snprintf(buffer, sizeof(buffer), "BP:");
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        return;
+    }
+    offset = (size_t)written;
+
+    for (size_t i = 0; i < BLUEPAD32_WEB_DATA_COUNT; ++i)
+    {
+        written = snprintf(buffer + offset, sizeof(buffer) - offset, "%s%ld", i == 0 ? "" : ",", (long)data[i]);
+        if (written < 0 || (size_t)written >= sizeof(buffer) - offset) {
+            return;
+        }
+        offset += (size_t)written;
+    }
+
+    written = snprintf(buffer + offset, sizeof(buffer) - offset, ";\n");
+    if (written < 0 || (size_t)written >= sizeof(buffer) - offset) {
+        return;
+    }
+
+    webbe_sendStr(buffer);
 }
 
 static bool processGamepad(ControllerPtr ctl)
