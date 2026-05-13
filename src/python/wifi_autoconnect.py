@@ -2,6 +2,8 @@ import subprocess
 import time
 import urllib.request
 import urllib.error
+import http.client
+import os
 import signal
 import sys
 import tempfile
@@ -16,7 +18,7 @@ SSID_PREFIXES = [
 WIFI_PASSWORD = "expresslrs"
 
 TARGET_IP = "10.0.0.1"
-TARGET_URL = f"http://{TARGET_IP}/"
+TARGET_URL = f"http://{TARGET_IP}/bluepad/health"
 CHECK_INTERVAL_SECONDS = 30
 SCAN_INTERVAL_SECONDS = 5
 
@@ -142,7 +144,10 @@ def web_page_accessible():
     try:
         with urllib.request.urlopen(TARGET_URL, timeout=5) as response:
             return 200 <= response.status < 500
-    except (urllib.error.URLError, TimeoutError, OSError):
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException):
+        return False
+    except Exception as ex:
+        log(f"⚠️ ERROR exception in 'web_page_accessible': {ex}")
         return False
 
 

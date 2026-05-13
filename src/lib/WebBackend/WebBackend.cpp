@@ -12,6 +12,7 @@
 #include "handset.h"
 #endif
 #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+#include <Arduino.h>
 #include "bluepad.h"
 #endif
 
@@ -34,6 +35,10 @@ static uint32_t wsLastPacketTime = 0;
 static uint32_t wsLastAckTime = 0;
 static uint32_t wsPendingAckClientId = 0;
 static bool wsPendingAck = false;
+
+#if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+static constexpr uint32_t BLUEPAD_WS_MIN_SEND_HEAP = 18000;
+#endif
 
 static inline void resetWsChannelPacket()
 {
@@ -78,7 +83,11 @@ void onWsEvent(AsyncWebSocket *server,
         webbe_ws_started = true;
         if (client != nullptr)
         {
+            #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+            client->setCloseClientOnQueueFull(true);
+            #else
             client->setCloseClientOnQueueFull(false);
+            #endif
             wsLastClient = client;
         }
     }
@@ -247,6 +256,23 @@ void webbe_sendStr(const char* s)
     {
         return;
     }
+
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    if (ESP.getFreeHeap() < BLUEPAD_WS_MIN_SEND_HEAP)
+    {
+        return;
+    }
+
+    if (wsLastClient != NULL && wsLastClient->status() == WS_CONNECTED && !wsLastClient->queueIsFull())
+    {
+        const uint32_t clientId = wsLastClient->id();
+        if (ws->availableForWrite(clientId))
+        {
+            wsLastClient->text(s);
+        }
+    }
+    return;
+    #endif
 
     if (ws->count() > 0)
     {

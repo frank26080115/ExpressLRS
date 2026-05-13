@@ -54,6 +54,7 @@ static constexpr UBaseType_t BLUEPAD32INIT_TASK_PRIORITY_LOW = 0;
 static constexpr BaseType_t BLUEPAD32INIT_TASK_CORE = 1;
 static constexpr size_t BLUEPAD32_CRSF_NUM_CHANNELS = 16;
 static constexpr uint32_t BLUEPAD32_DISCONNECT_TIMEOUT_MS = 1000;
+static constexpr uint32_t BLUEPAD32_WEB_SEND_INTERVAL_MS = 250;
 static constexpr size_t BLUEPAD32_WEB_DATA_COUNT = CRSF_NUM_CHANNELS * 2U + 1U;
 static constexpr size_t BLUEPAD32_WEB_BUFFER_SIZE = 512U;
 
@@ -504,7 +505,7 @@ static void sendToWeb()
 
     // rate limit
     static uint32_t last_time = 0;
-    if ((now - last_time) <= 100) {
+    if ((now - last_time) <= BLUEPAD32_WEB_SEND_INTERVAL_MS) {
         return;
     }
     last_time = now;

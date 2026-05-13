@@ -181,6 +181,7 @@ class BluepadPanel extends LitElement {
     bluepadMessageTimeoutTimer = null;
     bluepadMessageTimedOut = false;
     bluepadLastMessageAt = 0;
+    bluepadLastDataLogAt = 0;
     lastUnexpectedHciState = null;
 
     constructor() {
@@ -939,7 +940,11 @@ class BluepadPanel extends LitElement {
     }
 
     handleBluepadDataEvent(event) {
-        console.log('Bluepad32 data', event.detail);
+        const now = Date.now();
+        if (now - this.bluepadLastDataLogAt > 1000) {
+            console.log('Bluepad32 data', event.detail);
+            this.bluepadLastDataLogAt = now;
+        }
         this.liveBluepadData = event.detail;
         this.liveBluepadTimedOut = false;
     }
