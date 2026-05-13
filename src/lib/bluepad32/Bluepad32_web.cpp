@@ -84,10 +84,13 @@ static void bluepad_send_status(AsyncWebServerRequest* request, bool ok, const c
     doc["ok"] = ok;
     doc["message"] = message;
     bool pairingEnabled = false;
+    int hciState = -1;
     BLUEPAD_BTSTACK_DO_UNSAFE({
         pairingEnabled = uni_bt_enable_new_connections_is_enabled();
+        hciState = hci_get_state();
     });
     doc["pairing"] = pairingEnabled;
+    doc["hci_state"] = hciState;
     bluepad_send_json(request, doc, code);
 }
 

@@ -164,7 +164,11 @@
  * useful bring-up failures without chatty Bluetooth packet logs.
  */
 #ifndef CONFIG_BLUEPAD32_LOG_LEVEL
+#if defined(ENABLE_BLUEPAD32_DEBUG)
+#define CONFIG_BLUEPAD32_LOG_LEVEL 2
+#else
 #define CONFIG_BLUEPAD32_LOG_LEVEL 1
+#endif
 #endif
 
 /* Symbolic Kconfig choices, kept disabled/documented for reference. */

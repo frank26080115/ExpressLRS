@@ -59,6 +59,8 @@
 #include "hci.h"
 #include "hci_dump.h"
 #include "esp_bt.h"
+#include "esp_heap_caps.h"
+#include "esp_system.h"
 #include "btstack_debug.h"
 #include "btstack_audio.h"
 #include "btstack_port_esp32.h"
@@ -207,10 +209,35 @@ static void transport_init(const void *transport_config){
  * open transport connection
  */
 static int bt_controller_initialized;
+
+#if defined(ENABLE_BLUEPAD32_DEBUG)
+static void transport_print_bt_controller_status(const char *step) {
+    printf("BP32 transport: %s, controller_status=%d, free_heap=%u, internal_heap=%u\n",
+           step,
+           (int) esp_bt_controller_get_status(),
+           (unsigned) esp_get_free_heap_size(),
+           (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+}
+
+static void transport_print_bt_controller_error(const char *step, esp_err_t ret) {
+    printf("BP32 transport: %s failed: %s (0x%08x), controller_status=%d, free_heap=%u, internal_heap=%u\n",
+           step,
+           esp_err_to_name(ret),
+           (unsigned) ret,
+           (int) esp_bt_controller_get_status(),
+           (unsigned) esp_get_free_heap_size(),
+           (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+}
+#endif
+
 static int transport_open(void){
     esp_err_t ret;
 
     log_info("transport_open");
+
+#if defined(ENABLE_BLUEPAD32_DEBUG)
+    transport_print_bt_controller_status("open");
+#endif
 
     btstack_ring_buffer_init(&hci_ringbuffer, hci_ringbuffer_storage, sizeof(hci_ringbuffer_storage));
 
@@ -229,6 +256,9 @@ static int transport_open(void){
         ret = esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
         if (ret) {
             log_error("Bluetooth controller release classic bt memory failed: %s", esp_err_to_name(ret));
+#if defined(ENABLE_BLUEPAD32_DEBUG)
+            transport_print_bt_controller_error("esp_bt_controller_mem_release(CLASSIC)", ret);
+#endif
             return -1;
         }
 #endif
@@ -238,6 +268,9 @@ static int transport_open(void){
         ret = esp_bt_controller_init(&bt_cfg);
         if (ret) {
             log_error("transport: esp_bt_controller_init failed");
+#if defined(ENABLE_BLUEPAD32_DEBUG)
+            transport_print_bt_controller_error("esp_bt_controller_init", ret);
+#endif
             return -1;
         }
 
@@ -256,6 +289,9 @@ static int transport_open(void){
     ret = esp_bt_controller_enable(bt_mode);
     if (ret) {
         log_error("transport: esp_bt_controller_enable failed");
+#if defined(ENABLE_BLUEPAD32_DEBUG)
+        transport_print_bt_controller_error("esp_bt_controller_enable", ret);
+#endif
         return -1;
     }
 

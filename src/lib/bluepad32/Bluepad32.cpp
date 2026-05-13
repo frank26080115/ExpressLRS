@@ -29,6 +29,11 @@
 #include "handset.h"
 #endif
 
+extern "C" bool btInUse()
+{
+    return true;
+}
+
 extern uint32_t ChannelData[];
 int32_t ChannelDataShadow[2];
 
@@ -43,7 +48,7 @@ extern void custommixer_mix();
 extern void servoNewChannelsAvailable();
 #endif
 
-static constexpr uint32_t BLUEPAD32INIT_TASK_STACK_SIZE = 6144; // 8192;
+static constexpr uint32_t BLUEPAD32INIT_TASK_STACK_SIZE = 8192;
 static constexpr UBaseType_t BLUEPAD32INIT_TASK_PRIORITY = 1;
 static constexpr UBaseType_t BLUEPAD32INIT_TASK_PRIORITY_LOW = 0;
 static constexpr BaseType_t BLUEPAD32INIT_TASK_CORE = 1;
@@ -147,7 +152,9 @@ static void setBluepad32ConnectionState(connectionState_e newState)
 
 bool bluepad_init()
 {
-    //Serial.begin(115200, SERIAL_8N1, U0RXD_GPIO_NUM, U0TXD_GPIO_NUM);
+    #if defined(ENABLE_BLUEPAD32_DEBUG)
+    Serial.begin(115200, SERIAL_8N1, U0RXD_GPIO_NUM, U0TXD_GPIO_NUM);
+    #endif
 
     if (bluepad32InitTaskHandle != nullptr)
     {

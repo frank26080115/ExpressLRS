@@ -479,11 +479,6 @@ static void GetConfiguration(AsyncWebServerRequest *request)
     JsonObject mixerObj = cfg["custom-mixer"].to<JsonObject>();
     custom_mixer_to_json(config.GetCustomMixer(), mixerObj);
 
-    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
-    JsonObject bluepadObj = cfg["bluepad"].to<JsonObject>();
-    bluepad_config_to_json(config.GetBluepadConfig(), bluepadObj);
-    #endif
-
     cfg["fixed-packet-rate"] = config.GetFixedPacketRate();
 
     // save the 6x uint32_t numbers as an array to be passed to the web ui
@@ -521,6 +516,12 @@ static void GetConfiguration(AsyncWebServerRequest *request)
         settings["has_serial_pins"] = true;
     }
     #endif
+
+    #if defined(BUILD_BLUEPAD32) && defined(PLATFORM_ESP32)
+    JsonObject bluepadObj = cfg["bluepad"].to<JsonObject>();
+    bluepad_config_to_json(config.GetBluepadConfig(), bluepadObj);
+    #endif
+
     settings["product_name"] = product_name;
     settings["lua_name"] = device_name;
     settings["uidtype"] = GetConfigUidType(json);
