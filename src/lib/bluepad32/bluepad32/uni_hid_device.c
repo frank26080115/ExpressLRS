@@ -987,3 +987,11 @@ static void start_connection_timeout(uni_hid_device_t* d) {
     btstack_run_loop_set_timer(&d->connection_timer, HID_DEVICE_CONNECTION_TIMEOUT_MS);
     btstack_run_loop_add_timer(&d->connection_timer);
 }
+
+void uni_hid_device_refresh_connection_timeout(uni_hid_device_t* d) {
+    if (d == NULL)
+        return;
+
+    btstack_run_loop_remove_timer(&d->connection_timer);
+    start_connection_timeout(d);
+}

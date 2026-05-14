@@ -136,6 +136,7 @@ void uni_hid_device_on_connected(uni_hid_device_t* d, bool connected);
 void uni_hid_device_connect(uni_hid_device_t* d);
 void uni_hid_device_disconnect(uni_hid_device_t* d);
 void uni_hid_device_delete(uni_hid_device_t* d);
+void uni_hid_device_refresh_connection_timeout(uni_hid_device_t* d);
 
 void uni_hid_device_set_cod(uni_hid_device_t* d, uint32_t cod);
 bool uni_hid_device_is_cod_supported(uint32_t cod);

@@ -6,10 +6,16 @@
 #define UNI_CONFIG_H
 
 #include "bp32_config_shim.h" // #include "sdkconfig.h"
-#if defined(CONFIG_TARGET_POSIX) || defined(CONFIG_TARGET_PICO_W) || defined(CONFIG_IDF_TARGET_ESP32)
-// Pico W, original ESP32 and Posix all support both BR/EDR and BLE
+#if defined(CONFIG_TARGET_POSIX) || defined(CONFIG_TARGET_PICO_W)
+// Pico W and Posix support both BR/EDR and BLE.
 #define UNI_ENABLE_BREDR 1
 #define UNI_ENABLE_BLE 1
+#elif defined(CONFIG_IDF_TARGET_ESP32)
+// Original ESP32 supports both, but ExpressLRS Bluepad32 uses Classic only.
+#define UNI_ENABLE_BREDR 1
+#if !defined(BUILD_BLUEPAD32) || defined(CONFIG_BLUEPAD32_FORCE_DUAL_MODE)
+#define UNI_ENABLE_BLE 1
+#endif
 #elif defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
 // ESP32-S3 / C3
 #define UNI_ENABLE_BLE 1

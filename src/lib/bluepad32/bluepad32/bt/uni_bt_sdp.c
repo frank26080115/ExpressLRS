@@ -49,6 +49,7 @@
 
 #include <btstack.h>
 #include <inttypes.h>
+#include <string.h>
 
 #include "bp32_config_shim.h" // #include "sdkconfig.h"
 #include "bt/uni_bt.h"
@@ -78,6 +79,24 @@ static void sdp_query_timeout(btstack_timer_source_t* ts);
 
 // SDP Server
 static uint8_t device_id_sdp_service_buffer[100];
+
+static void apply_sony_fallback_pid_vid_if_needed(uni_hid_device_t* d) {
+    if (uni_hid_device_get_vendor_id(d) != 0 || uni_hid_device_get_product_id(d) != 0)
+        return;
+
+    if (strcmp(d->name, "Wireless Controller") == 0) {
+        logi("SDP PnP query returned empty VID/PID; treating '%s' as DualShock 4\n", d->name);
+        uni_hid_device_set_vendor_id(d, 0x054c);
+        uni_hid_device_set_product_id(d, 0x05c4);
+        return;
+    }
+
+    if (strstr(d->name, "DualSense") != NULL) {
+        logi("SDP PnP query returned empty VID/PID; treating '%s' as DualSense\n", d->name);
+        uni_hid_device_set_vendor_id(d, 0x054c);
+        uni_hid_device_set_product_id(d, 0x0ce6);
+    }
+}
 
 // HID results: HID descriptor, PSM interrupt, PSM control, etc.
 static void handle_sdp_hid_query_result(uint8_t packet_type, uint16_t channel, uint8_t* packet, uint16_t size) {
@@ -132,6 +151,7 @@ static void handle_sdp_hid_query_result(uint8_t packet_type, uint16_t channel, u
             }
             break;
         case SDP_EVENT_QUERY_COMPLETE:
+            logi("SDP HID descriptor query complete, status=0x%02x\n", sdp_event_query_complete_get_status(packet));
             uni_bt_sdp_query_end(sdp_device);
             break;
         default:
@@ -183,6 +203,8 @@ static void handle_sdp_pid_query_result(uint8_t packet_type, uint16_t channel, u
             }
             break;
         case SDP_EVENT_QUERY_COMPLETE:
+            logi("SDP VID/PID query complete, status=0x%02x\n", sdp_event_query_complete_get_status(packet));
+            apply_sony_fallback_pid_vid_if_needed(sdp_device);
             logi("Vendor ID: 0x%04x - Product ID: 0x%04x\n", uni_hid_device_get_vendor_id(sdp_device),
                  uni_hid_device_get_product_id(sdp_device));
             uni_hid_device_guess_controller_type_from_pid_vid(sdp_device);
@@ -209,8 +231,11 @@ static void sdp_query_timeout(btstack_timer_source_t* ts) {
         return;
     }
 
-    logi("Failed to query SDP for %s, timeout\n", bd_addr_to_str(d->conn.btaddr));
+    logi("Failed to query SDP for %s, timeout. Deleting device.\n", bd_addr_to_str(d->conn.btaddr));
     sdp_device = NULL;
+    uni_hid_device_disconnect(d);
+    uni_hid_device_delete(d);
+    /* 'd' is destroyed after this call, don't use it */
 }
 
 // Public functions

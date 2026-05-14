@@ -48,7 +48,7 @@ extern void custommixer_mix();
 extern void servoNewChannelsAvailable();
 #endif
 
-static constexpr uint32_t BLUEPAD32INIT_TASK_STACK_SIZE = 8192;
+static constexpr uint32_t BLUEPAD32INIT_TASK_STACK_SIZE = 1024 * 6; //8192;
 static constexpr UBaseType_t BLUEPAD32INIT_TASK_PRIORITY = 1;
 static constexpr UBaseType_t BLUEPAD32INIT_TASK_PRIORITY_LOW = 0;
 static constexpr BaseType_t BLUEPAD32INIT_TASK_CORE = 1;

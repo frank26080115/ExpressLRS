@@ -25,12 +25,70 @@
 #endif
 
 #define INQUIRY_REMOTE_NAME_TIMEOUT_MS 4500
+#define INCOMING_L2CAP_FALLBACK_TIMEOUT_MS 1500
+#define L2CAP_CONTROL_RTX_RETRY_DELAY_MS 750
 _Static_assert(INQUIRY_REMOTE_NAME_TIMEOUT_MS < HID_DEVICE_CONNECTION_TIMEOUT_MS, "Timeout too big");
 
 static bool bt_bredr_enabled = true;
+static bool bt_bredr_scanning = false;
+static btstack_timer_source_t bt_bredr_incoming_l2cap_fallback_timer;
+static uni_hid_device_t* bt_bredr_incoming_l2cap_fallback_device = NULL;
+static btstack_timer_source_t bt_bredr_l2cap_control_retry_timer;
+static uni_hid_device_t* bt_bredr_l2cap_control_retry_device = NULL;
+static uint8_t bt_bredr_l2cap_control_retry_count = 0;
+static bd_addr_t bt_bredr_zero_addr = {0};
+
+typedef enum {
+    BT_BREDR_PENDING_NONE,
+    BT_BREDR_PENDING_L2CAP_CONTROL,
+    BT_BREDR_PENDING_SDP_QUERY,
+    BT_BREDR_PENDING_SDP_HID_DESCRIPTOR,
+} bt_bredr_pending_op_t;
+
+static uni_hid_device_t* bt_bredr_pending_device = NULL;
+static bt_bredr_pending_op_t bt_bredr_pending_op = BT_BREDR_PENDING_NONE;
+
+static bool bt_bredr_device_is_active(uni_hid_device_t* d) {
+    return d != NULL && bd_addr_cmp(d->conn.btaddr, bt_bredr_zero_addr) != 0;
+}
+
+static void cancel_incoming_l2cap_fallback(uni_hid_device_t* d) {
+    if (d == NULL || bt_bredr_incoming_l2cap_fallback_device != d)
+        return;
+
+    btstack_run_loop_remove_timer(&bt_bredr_incoming_l2cap_fallback_timer);
+    bt_bredr_incoming_l2cap_fallback_device = NULL;
+}
+
+static void cancel_l2cap_control_retry(uni_hid_device_t* d) {
+    if (d == NULL || bt_bredr_l2cap_control_retry_device != d)
+        return;
+
+    btstack_run_loop_remove_timer(&bt_bredr_l2cap_control_retry_timer);
+    bt_bredr_l2cap_control_retry_device = NULL;
+}
+
+static bool defer_until_inquiry_stops(uni_hid_device_t* d, bt_bredr_pending_op_t op, const char* op_name) {
+    if (!uni_bt_bredr_scan_stop())
+        return false;
+
+    logi("Deferring %s until inquiry stops\n", op_name);
+    bt_bredr_pending_device = d;
+    bt_bredr_pending_op = op;
+    return true;
+}
 
 static void l2cap_create_control_connection(uni_hid_device_t* d) {
     uint8_t status;
+
+    // Periodic inquiry can keep delivering duplicate results while the HID
+    // control channel is being opened. Stop it before paging/auth/L2CAP to keep
+    // the ESP32 controller/coexistence path as quiet as possible.
+    if (defer_until_inquiry_stops(d, BT_BREDR_PENDING_L2CAP_CONTROL, "L2CAP control connection"))
+        return;
+
+    uni_hid_device_refresh_connection_timeout(d);
+
     status = l2cap_create_channel(uni_bt_packet_handler, d->conn.btaddr, BLUETOOTH_PSM_HID_CONTROL,
                                   UNI_BT_L2CAP_CHANNEL_MTU, &d->conn.control_cid);
     if (status) {
@@ -38,6 +96,61 @@ static void l2cap_create_control_connection(uni_hid_device_t* d) {
     } else {
         uni_bt_conn_set_state(&d->conn, UNI_BT_CONN_STATE_L2CAP_CONTROL_CONNECTION_REQUESTED);
     }
+}
+
+static void incoming_l2cap_fallback_timeout(btstack_timer_source_t* ts) {
+    uni_hid_device_t* d = btstack_run_loop_get_timer_context(ts);
+
+    bt_bredr_incoming_l2cap_fallback_device = NULL;
+
+    if (!bt_bredr_device_is_active(d))
+        return;
+
+    if (!uni_hid_device_is_incoming(d) || d->conn.control_cid || d->conn.interrupt_cid)
+        return;
+
+    logi("No incoming HID L2CAP from %s; trying host-initiated HID connection\n", bd_addr_to_str(d->conn.btaddr));
+    uni_hid_device_set_incoming(d, false);
+    uni_hid_device_refresh_connection_timeout(d);
+
+    if (uni_bt_conn_get_state(&d->conn) == UNI_BT_CONN_STATE_DEVICE_NONE)
+        uni_bt_conn_set_state(&d->conn, UNI_BT_CONN_STATE_DEVICE_DISCOVERED);
+
+    uni_bt_bredr_process_fsm(d);
+}
+
+static void schedule_incoming_l2cap_fallback(uni_hid_device_t* d) {
+    cancel_incoming_l2cap_fallback(bt_bredr_incoming_l2cap_fallback_device);
+
+    bt_bredr_incoming_l2cap_fallback_device = d;
+    btstack_run_loop_set_timer_context(&bt_bredr_incoming_l2cap_fallback_timer, d);
+    btstack_run_loop_set_timer_handler(&bt_bredr_incoming_l2cap_fallback_timer, &incoming_l2cap_fallback_timeout);
+    btstack_run_loop_set_timer(&bt_bredr_incoming_l2cap_fallback_timer, INCOMING_L2CAP_FALLBACK_TIMEOUT_MS);
+    btstack_run_loop_add_timer(&bt_bredr_incoming_l2cap_fallback_timer);
+}
+
+static void l2cap_control_retry_timeout(btstack_timer_source_t* ts) {
+    uni_hid_device_t* d = btstack_run_loop_get_timer_context(ts);
+
+    bt_bredr_l2cap_control_retry_device = NULL;
+
+    if (!bt_bredr_device_is_active(d))
+        return;
+
+    logi("Retrying HID Control L2CAP connection to %s after RTX timeout\n", bd_addr_to_str(d->conn.btaddr));
+    d->conn.control_cid = 0;
+    l2cap_create_control_connection(d);
+}
+
+static void schedule_l2cap_control_retry(uni_hid_device_t* d) {
+    cancel_l2cap_control_retry(bt_bredr_l2cap_control_retry_device);
+    uni_hid_device_refresh_connection_timeout(d);
+
+    bt_bredr_l2cap_control_retry_device = d;
+    btstack_run_loop_set_timer_context(&bt_bredr_l2cap_control_retry_timer, d);
+    btstack_run_loop_set_timer_handler(&bt_bredr_l2cap_control_retry_timer, &l2cap_control_retry_timeout);
+    btstack_run_loop_set_timer(&bt_bredr_l2cap_control_retry_timer, L2CAP_CONTROL_RTX_RETRY_DELAY_MS);
+    btstack_run_loop_add_timer(&bt_bredr_l2cap_control_retry_timer);
 }
 
 static void l2cap_create_interrupt_connection(uni_hid_device_t* d) {
@@ -63,25 +176,41 @@ static void inquiry_remote_name_timeout_callback(btstack_timer_source_t* ts) {
 void uni_bt_bredr_scan_start(void) {
     uint8_t status;
 
+    if (bt_bredr_scanning)
+        return;
+
     status = gap_inquiry_periodic_start(uni_bt_get_gap_inquiry_length(), uni_bt_get_gap_max_periodic_length(),
                                         uni_bt_get_gap_min_periodic_length());
-    if (status)
+    if (status) {
         loge("Failed to start period inquiry, error=0x%02x\n", status);
+        return;
+    }
+    bt_bredr_scanning = true;
     logi("BR/EDR scan -> 1\n");
 }
 
-void uni_bt_bredr_scan_stop(void) {
+bool uni_bt_bredr_scan_stop(void) {
     uint8_t status;
 
-    status = gap_inquiry_stop();
-    if (status)
-        loge("Error: cannot stop inquiry (0x%02x), please try again\n", status);
+    if (!bt_bredr_scanning)
+        return false;
 
+    status = gap_inquiry_stop();
+    if (status) {
+        loge("Error: cannot stop inquiry (0x%02x), please try again\n", status);
+        return false;
+    }
+
+    bt_bredr_scanning = false;
     logi("BR/EDR scan -> 0\n");
+    return true;
 }
 
 // Called from uni_hid_device_disconnect()
 void uni_bt_bredr_disconnect(uni_hid_device_t* d) {
+    cancel_incoming_l2cap_fallback(d);
+    cancel_l2cap_control_retry(d);
+
     if (gap_get_connection_type(d->conn.handle) != GAP_CONNECTION_INVALID) {
         gap_disconnect(d->conn.handle);
         d->conn.handle = UNI_BT_CONN_HANDLE_INVALID;
@@ -242,6 +371,8 @@ void uni_bt_bredr_process_fsm(uni_hid_device_t* d) {
         if (strcmp("Wireless Controller", d->name) == 0) {
             logi("uni_bt_process_fsm: gamepad is 'Wireless Controller', starting SDP query\n");
             d->sdp_query_type = SDP_QUERY_BEFORE_CONNECT;
+            if (defer_until_inquiry_stops(d, BT_BREDR_PENDING_SDP_QUERY, "SDP query"))
+                return;
             uni_bt_sdp_query_start(d);
             /* 'd' might be invalid */
             return;
@@ -259,6 +390,8 @@ void uni_bt_bredr_process_fsm(uni_hid_device_t* d) {
                 uni_hid_device_set_ready(d);
             } else {
                 logi("uni_bt_process_fsm: starting SDP query\n");
+                if (defer_until_inquiry_stops(d, BT_BREDR_PENDING_SDP_QUERY, "SDP query"))
+                    return;
                 uni_bt_sdp_query_start(d);
                 /* 'd' might be invalid */
             }
@@ -272,6 +405,8 @@ void uni_bt_bredr_process_fsm(uni_hid_device_t* d) {
 
     if (state == UNI_BT_CONN_STATE_SDP_VENDOR_FETCHED) {
         logi("uni_bt_process_fsm: querying HID descriptor\n");
+        if (defer_until_inquiry_stops(d, BT_BREDR_PENDING_SDP_HID_DESCRIPTOR, "SDP HID descriptor query"))
+            return;
         uni_bt_sdp_query_start_hid_descriptor(d);
         return;
     }
@@ -309,6 +444,8 @@ void uni_bt_bredr_process_fsm(uni_hid_device_t* d) {
                     break;
                 case SDP_QUERY_AFTER_CONNECT:
                     logi("uni_bt_process_fsm: starting SDP query\n");
+                    if (defer_until_inquiry_stops(d, BT_BREDR_PENDING_SDP_QUERY, "SDP query"))
+                        return;
                     uni_bt_sdp_query_start(d);
                     /* 'd' might be invalid */
                     break;
@@ -371,11 +508,14 @@ void uni_bt_bredr_on_l2cap_incoming_connection(uint16_t channel, const uint8_t* 
                     l2cap_decline_connection(channel);
                     break;
                 }
+                bt_bredr_l2cap_control_retry_count = 0;
             }
             l2cap_accept_connection(channel);
             uni_hid_device_set_connection_handle(device, handle);
             device->conn.control_cid = channel;
             uni_hid_device_set_incoming(device, true);
+            cancel_incoming_l2cap_fallback(device);
+            cancel_l2cap_control_retry(device);
             break;
         case PSM_HID_INTERRUPT:
             if (device == NULL) {
@@ -415,13 +555,25 @@ void uni_bt_bredr_on_l2cap_channel_opened(uint16_t channel, const uint8_t* packe
     status = l2cap_event_channel_opened_get_status(packet);
     if (status) {
         logi("L2CAP Connection failed: 0x%02x.\n", status);
+        if (status == L2CAP_CONNECTION_RESPONSE_RESULT_RTX_TIMEOUT &&
+            uni_bt_conn_get_state(&device->conn) == UNI_BT_CONN_STATE_L2CAP_CONTROL_CONNECTION_REQUESTED &&
+            bt_bredr_l2cap_control_retry_count == 0) {
+            bt_bredr_l2cap_control_retry_count++;
+            logi("HID Control L2CAP timed out; keeping ACL/key and scheduling one retry for %s.\n",
+                 bd_addr_to_str(address));
+            schedule_l2cap_control_retry(device);
+            return;
+        }
+
         // Practice showed that if the connection fails, just disconnect/remove
         // so that the connection can start again.
         if (status == L2CAP_CONNECTION_RESPONSE_RESULT_REFUSED_SECURITY) {
             logi("Probably GAP-security-related issues. Set GAP security to 2\n");
+            logi("Removing key for device: %s.\n", bd_addr_to_str(address));
+            gap_drop_link_key_for_bd_addr(device->conn.btaddr);
+        } else {
+            logi("Keeping key for device: %s after non-security L2CAP failure.\n", bd_addr_to_str(address));
         }
-        logi("Removing key for device: %s.\n", bd_addr_to_str(address));
-        gap_drop_link_key_for_bd_addr(device->conn.btaddr);
         uni_hid_device_disconnect(device);
         uni_hid_device_delete(device);
         /* 'device' is destroyed, don't use */
@@ -440,8 +592,12 @@ void uni_bt_bredr_on_l2cap_channel_opened(uint16_t channel, const uint8_t* packe
         "incoming=%d, local MTU=%d, remote MTU=%d, addr=%s\n",
         psm, local_cid, remote_cid, handle, incoming, local_mtu, remote_mtu, bd_addr_to_str(address));
 
+    cancel_incoming_l2cap_fallback(device);
+
     switch (psm) {
         case PSM_HID_CONTROL:
+            bt_bredr_l2cap_control_retry_count = 0;
+            cancel_l2cap_control_retry(device);
             device->conn.control_cid = l2cap_event_channel_opened_get_local_cid(packet);
             logi("HID Control opened, cid 0x%02x\n", device->conn.control_cid);
             uni_bt_conn_set_state(&device->conn, UNI_BT_CONN_STATE_L2CAP_CONTROL_CONNECTED);
@@ -577,6 +733,7 @@ void uni_bt_bredr_on_gap_inquiry_result(uint16_t channel, const uint8_t* packet,
             d->conn.page_scan_repetition_mode = page_scan_repetition_mode;
             d->conn.clock_offset = clock_offset | UNI_BT_CLOCK_OFFSET_VALID;
             d->conn.rssi = rssi;
+            bt_bredr_l2cap_control_retry_count = 0;
 
             if (name_len > 0 && !uni_hid_device_has_name(d)) {
                 uni_hid_device_set_name(d, name_buffer);
@@ -584,6 +741,37 @@ void uni_bt_bredr_on_gap_inquiry_result(uint16_t channel, const uint8_t* packet,
             }
         }
         uni_bt_bredr_process_fsm(d);
+    }
+}
+
+void uni_bt_bredr_on_gap_inquiry_complete(void) {
+    uni_hid_device_t* d = bt_bredr_pending_device;
+    bt_bredr_pending_op_t op = bt_bredr_pending_op;
+    bt_bredr_pending_device = NULL;
+    bt_bredr_pending_op = BT_BREDR_PENDING_NONE;
+
+    if (d == NULL)
+        return;
+
+    if (!bt_bredr_device_is_active(d))
+        return;
+
+    switch (op) {
+        case BT_BREDR_PENDING_L2CAP_CONTROL:
+            logi("Inquiry stopped, resuming pending connection to %s\n", bd_addr_to_str(d->conn.btaddr));
+            uni_bt_bredr_process_fsm(d);
+            break;
+        case BT_BREDR_PENDING_SDP_QUERY:
+            logi("Inquiry stopped, starting pending SDP query for %s\n", bd_addr_to_str(d->conn.btaddr));
+            uni_bt_sdp_query_start(d);
+            break;
+        case BT_BREDR_PENDING_SDP_HID_DESCRIPTOR:
+            logi("Inquiry stopped, starting pending SDP HID descriptor query for %s\n", bd_addr_to_str(d->conn.btaddr));
+            uni_bt_sdp_query_start_hid_descriptor(d);
+            break;
+        case BT_BREDR_PENDING_NONE:
+        default:
+            break;
     }
 }
 
@@ -597,6 +785,7 @@ void uni_bt_bredr_on_hci_connection_request(uint16_t channel, const uint8_t* pac
 
     hci_event_connection_request_get_bd_addr(packet, event_addr);
     cod = hci_event_connection_request_get_class_of_device(packet);
+    uni_bt_bredr_scan_stop();
 
     d = uni_hid_device_get_instance_for_address(event_addr);
     if (d == NULL) {
@@ -605,8 +794,11 @@ void uni_bt_bredr_on_hci_connection_request(uint16_t channel, const uint8_t* pac
             logi("Cannot create new device... no more slots available\n");
             return;
         }
+        bt_bredr_l2cap_control_retry_count = 0;
     }
     uni_hid_device_set_cod(d, cod);
+    if (uni_bt_conn_get_state(&d->conn) == UNI_BT_CONN_STATE_DEVICE_NONE)
+        uni_bt_conn_set_state(&d->conn, UNI_BT_CONN_STATE_DEVICE_DISCOVERED);
     uni_hid_device_set_incoming(d, true);
     logi("on_hci_connection_request from: address = %s, cod=0x%04x\n", bd_addr_to_str(event_addr), cod);
 }
@@ -635,6 +827,9 @@ void uni_bt_bredr_on_hci_connection_complete(uint16_t channel, const uint8_t* pa
 
     handle = hci_event_connection_complete_get_connection_handle(packet);
     uni_hid_device_set_connection_handle(d, handle);
+
+    if (uni_hid_device_is_incoming(d) && d->conn.control_cid == 0 && d->conn.interrupt_cid == 0)
+        schedule_incoming_l2cap_fallback(d);
 
     // if (uni_hid_device_is_incoming(d)) {
     //   hci_send_cmd(&hci_authentication_requested, handle);

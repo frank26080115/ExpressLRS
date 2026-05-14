@@ -265,6 +265,15 @@ static int transport_open(void){
 #endif
 
         esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+#if defined(ENABLE_BLUEPAD32_DEBUG)
+        printf("BP32 transport config: mode=%u, hli=%u, bt_acl=%u, ble_conn=%u, free_heap=%u, internal_heap=%u\n",
+               (unsigned) bt_cfg.mode,
+               (unsigned) bt_cfg.hli,
+               (unsigned) bt_cfg.bt_max_acl_conn,
+               (unsigned) bt_cfg.ble_max_conn,
+               (unsigned) esp_get_free_heap_size(),
+               (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+#endif
         ret = esp_bt_controller_init(&bt_cfg);
         if (ret) {
             log_error("transport: esp_bt_controller_init failed");
@@ -293,6 +302,14 @@ static int transport_open(void){
         transport_print_bt_controller_error("esp_bt_controller_enable", ret);
 #endif
         return -1;
+    }
+
+    ret = esp_bt_sleep_disable();
+    if (ret) {
+        log_error("transport: esp_bt_sleep_disable failed: %s", esp_err_to_name(ret));
+#if defined(ENABLE_BLUEPAD32_DEBUG)
+        transport_print_bt_controller_error("esp_bt_sleep_disable", ret);
+#endif
     }
 
     esp_vhci_host_register_callback(&vhci_host_cb);

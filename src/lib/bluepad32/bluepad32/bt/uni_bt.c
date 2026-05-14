@@ -448,7 +448,10 @@ void uni_bt_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t* packe
                 case GAP_EVENT_INQUIRY_COMPLETE:
                     logd("--> GAP_EVENT_INQUIRY_COMPLETE\n");
                     // This can happen when "exit periodic inquiry" is called.
-                    // Just do nothing, don't call "start_scan" again.
+                    // Resume a pending BR/EDR connection if inquiry was stopped
+                    // to keep the controller quiet while opening L2CAP.
+                    if (IS_ENABLED(UNI_ENABLE_BREDR))
+                        uni_bt_bredr_on_gap_inquiry_complete();
                     break;
                 case GAP_EVENT_ADVERTISING_REPORT:
                     if (IS_ENABLED(UNI_ENABLE_BLE))

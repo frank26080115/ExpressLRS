@@ -1809,7 +1809,11 @@ static void HandleWebUpdate()
         DBGLN("heap before wifi mode: %u", ESP.getFreeHeap());
         BLUEPAD_WIFI_DEBUG_PRINTF("WiFi: heap before mode=%u\n", (unsigned)ESP.getFreeHeap());
         #if defined(PLATFORM_ESP32)
+        #if defined(BUILD_BLUEPAD32)
+        WiFi.setSleep(WIFI_PS_MIN_MODEM);
+        #else
         WiFi.setSleep(WIFI_PS_NONE);
+        #endif
         #endif
         {
           const bool modeSet = WiFi.mode(wifiMode);

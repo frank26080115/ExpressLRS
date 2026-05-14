@@ -103,17 +103,28 @@
 #define CONFIG_BT_ENABLED 1
 #endif
 
-/* Original ESP32 can run dual-mode BT/BLE.  ESP32-C3/S3 are BLE-only, so leave
- * BTDM/BR_EDR mode symbols to the real sdkconfig when available.
+/* Original ESP32 can run dual-mode BT/BLE.  For the ExpressLRS Bluepad32
+ * original-ESP32 build, prefer BR/EDR-only for controller input.  This avoids
+ * the BLE identity-resolution path during Classic gamepad pairing and leaves
+ * more controller RAM for WiFi coexistence. ESP32-C3/S3 remain BLE-only.
  */
-/* #define CONFIG_BTDM_CTRL_MODE_BTDM 1 */       /* ESP32 dual-mode Classic + BLE. */
+#if defined(BUILD_BLUEPAD32) && defined(CONFIG_IDF_TARGET_ESP32)
+#undef CONFIG_BTDM_CTRL_MODE_BTDM
+#undef CONFIG_BTDM_CONTROLLER_MODE_BTDM
+#ifndef CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY
+#define CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY 1
+#endif
+#endif
+/* #define CONFIG_BTDM_CTRL_MODE_BTDM 1 */        /* ESP32 dual-mode Classic + BLE. */
 /* #define CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY 1 */ /* ESP32 Classic-only mode. */
 
 /* Bluepad32 property default: accept BLE-capable controllers by default.  This
  * is needed for DualShock 4 / DualSense on ESP32-C3 where Classic is absent.
  */
 #ifndef CONFIG_BLUEPAD32_ENABLE_BLE_BY_DEFAULT
+#if !defined(BUILD_BLUEPAD32) || !defined(CONFIG_IDF_TARGET_ESP32)
 #define CONFIG_BLUEPAD32_ENABLE_BLE_BY_DEFAULT 1
+#endif
 #endif
 
 /* GAP security level 2 helps Nintendo Switch Pro and is generally fine for
