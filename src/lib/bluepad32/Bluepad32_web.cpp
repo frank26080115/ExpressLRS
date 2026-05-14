@@ -4,12 +4,121 @@
 
 #include <AsyncJson.h>
 #include <ESPAsyncWebServer.h>
+#include <pgmspace.h>
 
+#include <algorithm>
 #include <ArduinoBluepad32.h>
 #include <bt/uni_bt.h>
 #include <btstack.h>
 
 extern ControllerPtr myControllers[BP32_MAX_GAMEPADS];
+
+// Bluepad32 uses a lot of heap memory, and if AsyncWebServer doesn't have enough memory
+// it does this weird thing where it sends the compressed payload without any HTTP headers
+// the solution is to use a response handler that sends back the response in smaller chunks
+class BluepadWebAssetResponse final : public AsyncWebServerResponse
+{
+public:
+    BluepadWebAssetResponse(const char* contentType, const uint8_t* content, size_t len)
+        : _content(content), _headSent(0)
+    {
+        _code = 200;
+        _contentType = contentType;
+        _contentLength = len;
+    }
+
+    bool _sourceValid() const override
+    {
+        return _content != nullptr;
+    }
+
+    void _respond(AsyncWebServerRequest* request) override
+    {
+        addHeader("Connection", "close", false);
+        _assembleHead(_head, request->version());
+        _state = RESPONSE_HEADERS;
+        _ack(request, 0, 0);
+    }
+
+    size_t _ack(AsyncWebServerRequest* request, size_t len, uint32_t time) override
+    {
+        (void)time;
+        _ackedLength += len;
+
+        AsyncClient* client = request->client();
+        if (client == nullptr) {
+            _state = RESPONSE_FAILED;
+            return 0;
+        }
+
+        size_t wrote = 0;
+        size_t space = client->space();
+
+        if (_state == RESPONSE_HEADERS) {
+            const size_t headRemaining = _head.length() - _headSent;
+            const size_t toWrite = std::min(space, headRemaining);
+            if (toWrite == 0) {
+                return 0;
+            }
+
+            const size_t written = client->write(_head.c_str() + _headSent, toWrite);
+            _headSent += written;
+            _writtenLength += written;
+            wrote += written;
+            space -= written;
+
+            if (written == 0 || _headSent < _head.length()) {
+                return wrote;
+            }
+
+            _head = "";
+            _headSent = 0;
+            _state = RESPONSE_CONTENT;
+        }
+
+        if (_state == RESPONSE_CONTENT) {
+            const size_t contentRemaining = _contentLength - _sentLength;
+            if (contentRemaining == 0) {
+                _state = RESPONSE_WAIT_ACK;
+                return wrote;
+            }
+
+            static constexpr size_t CHUNK_SIZE = 512;
+            uint8_t buffer[CHUNK_SIZE];
+            const size_t toWrite = std::min(std::min(space, contentRemaining), CHUNK_SIZE);
+            if (toWrite == 0) {
+                return wrote;
+            }
+
+            memcpy_P(buffer, _content + _sentLength, toWrite);
+            const size_t written = client->write(reinterpret_cast<const char*>(buffer), toWrite);
+            _sentLength += written;
+            _writtenLength += written;
+            wrote += written;
+
+            if (_sentLength == _contentLength) {
+                _state = RESPONSE_WAIT_ACK;
+            }
+            return wrote;
+        }
+
+        if (_state == RESPONSE_WAIT_ACK && _ackedLength >= _writtenLength) {
+            _state = RESPONSE_END;
+        }
+
+        return wrote;
+    }
+
+private:
+    const uint8_t* _content;
+    String _head;
+    size_t _headSent;
+};
+
+AsyncWebServerResponse* bluepad_create_web_asset_response(const char* contentType, const uint8_t* content, size_t len)
+{
+    return new BluepadWebAssetResponse(contentType, content, len);
+}
 
 static void bluepad_auxchan_to_json(const bluepad_auxchan_cfg_t* aux, JsonObject obj)
 {

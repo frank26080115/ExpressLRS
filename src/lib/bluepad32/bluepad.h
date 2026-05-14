@@ -6,10 +6,14 @@
 
 #include "targets.h"
 #include "bluepad_types.h"
+#include <stddef.h>
+#include <stdint.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <btstack_run_loop_freertos.h>
 #include <ArduinoJson.h>
+
+class AsyncWebServerResponse;
 
 // public functions
 bool bluepad_init();
@@ -49,5 +53,6 @@ extern bool bluepadTemporaryConfigUpdated;
 
 void bluepad_config_to_json(const bluepad_cfg_t* cfg, JsonObject obj);
 void json_to_bluepad_config(JsonObjectConst obj, bluepad_cfg_t* cfg);
+AsyncWebServerResponse* bluepad_create_web_asset_response(const char* contentType, const uint8_t* content, size_t len);
 
 #endif

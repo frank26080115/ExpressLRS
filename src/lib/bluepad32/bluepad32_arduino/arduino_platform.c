@@ -159,8 +159,8 @@ static void arduino_on_init_complete(void) {
     _pending_queue = xQueueCreate(MAX_PENDING_REQUESTS, sizeof(pending_request_t));
     assert(_pending_queue != NULL);
 
-    // Start scanning
-    uni_bt_enable_new_connections_unsafe(true);
+    // Do not start accepting new controller pairings until the application explicitly enables it.
+    uni_bt_enable_new_connections_unsafe(false);
 
 #if !CONFIG_AUTOSTART_ARDUINO
     arduino_bootstrap();

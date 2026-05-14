@@ -9,7 +9,6 @@
 
 #if defined(PLATFORM_ESP32)
 #include <esp_wifi.h>
-#include <esp_netif.h>
 #include <WiFi.h>
 #if !defined(BUILD_BLUEPAD32)
 #include <ESPmDNS.h>
@@ -29,7 +28,6 @@
 #include <DNSServer.h>
 #endif
 
-#include <algorithm>
 #include <set>
 #include <StreamString.h>
 
@@ -89,248 +87,6 @@ static const byte DNS_PORT = 53;
 static DNSServer dnsServer;
 #endif
 static IPAddress ipAddress;
-
-#if defined(BUILD_BLUEPAD32) && defined(ENABLE_BLUEPAD32_DEBUG) && defined(PLATFORM_ESP32)
-#define BLUEPAD_WIFI_DEBUG_PRINTF(...) printf(__VA_ARGS__)
-
-esp_netif_t* get_esp_interface_netif(esp_interface_t interface);
-
-static const char *bluepad_wifi_dhcp_status_name(esp_netif_dhcp_status_t status)
-{
-  switch (status)
-  {
-    case ESP_NETIF_DHCP_INIT:
-      return "init";
-    case ESP_NETIF_DHCP_STARTED:
-      return "started";
-    case ESP_NETIF_DHCP_STOPPED:
-      return "stopped";
-    default:
-      return "unknown";
-  }
-}
-
-static const char *bluepad_wifi_ps_name(wifi_ps_type_t ps)
-{
-  switch (ps)
-  {
-    case WIFI_PS_NONE:
-      return "none";
-    case WIFI_PS_MIN_MODEM:
-      return "min";
-    case WIFI_PS_MAX_MODEM:
-      return "max";
-    default:
-      return "unknown";
-  }
-}
-
-static void bluepad_wifi_print_ap_diag(const char *step)
-{
-  wifi_mode_t mode = WIFI_MODE_NULL;
-  wifi_ps_type_t ps = WIFI_PS_NONE;
-  int8_t txPower = 0;
-  wifi_sta_list_t stationList = {};
-  esp_netif_ip_info_t ipInfo = {};
-  esp_netif_dhcp_status_t dhcpStatus = ESP_NETIF_DHCP_INIT;
-
-  const esp_err_t modeErr = esp_wifi_get_mode(&mode);
-  const esp_err_t psErr = esp_wifi_get_ps(&ps);
-  const esp_err_t powerErr = esp_wifi_get_max_tx_power(&txPower);
-  const esp_err_t stationErr = esp_wifi_ap_get_sta_list(&stationList);
-  esp_netif_t *apNetif = get_esp_interface_netif(ESP_IF_WIFI_AP);
-  const esp_err_t ipErr = apNetif ? esp_netif_get_ip_info(apNetif, &ipInfo) : ESP_FAIL;
-  const esp_err_t dhcpErr = apNetif ? esp_netif_dhcps_get_status(apNetif, &dhcpStatus) : ESP_FAIL;
-  const String ipStr = IPAddress(ipInfo.ip.addr).toString();
-  const String gwStr = IPAddress(ipInfo.gw.addr).toString();
-  const String maskStr = IPAddress(ipInfo.netmask.addr).toString();
-
-  printf("WiFi AP diag: %s mode=%d(%s) sleep=%s(%s) tx_power_qdbm=%d(%s) ip=%s gw=%s mask=%s ip_err=%s dhcps=%s(%s) stations=%u(%s) free_heap=%u\n",
-         step,
-         mode,
-         esp_err_to_name(modeErr),
-         bluepad_wifi_ps_name(ps),
-         esp_err_to_name(psErr),
-         txPower,
-         esp_err_to_name(powerErr),
-         ipStr.c_str(),
-         gwStr.c_str(),
-         maskStr.c_str(),
-         esp_err_to_name(ipErr),
-         bluepad_wifi_dhcp_status_name(dhcpStatus),
-         esp_err_to_name(dhcpErr),
-         stationErr == ESP_OK ? stationList.num : 0,
-         esp_err_to_name(stationErr),
-         (unsigned)ESP.getFreeHeap());
-}
-
-static void bluepad_wifi_debug_event(WiFiEvent_t event, WiFiEventInfo_t info)
-{
-  switch (event)
-  {
-    case ARDUINO_EVENT_WIFI_AP_START:
-      printf("WiFi event: AP_START\n");
-      bluepad_wifi_print_ap_diag("event AP_START");
-      break;
-    case ARDUINO_EVENT_WIFI_AP_STOP:
-      printf("WiFi event: AP_STOP\n");
-      break;
-    case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
-      printf("WiFi event: AP_STACONNECTED mac=%02x:%02x:%02x:%02x:%02x:%02x aid=%u\n",
-             info.wifi_ap_staconnected.mac[0],
-             info.wifi_ap_staconnected.mac[1],
-             info.wifi_ap_staconnected.mac[2],
-             info.wifi_ap_staconnected.mac[3],
-             info.wifi_ap_staconnected.mac[4],
-             info.wifi_ap_staconnected.mac[5],
-             info.wifi_ap_staconnected.aid);
-      bluepad_wifi_print_ap_diag("event AP_STACONNECTED");
-      break;
-    case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
-      printf("WiFi event: AP_STADISCONNECTED mac=%02x:%02x:%02x:%02x:%02x:%02x aid=%u\n",
-             info.wifi_ap_stadisconnected.mac[0],
-             info.wifi_ap_stadisconnected.mac[1],
-             info.wifi_ap_stadisconnected.mac[2],
-             info.wifi_ap_stadisconnected.mac[3],
-             info.wifi_ap_stadisconnected.mac[4],
-             info.wifi_ap_stadisconnected.mac[5],
-             info.wifi_ap_stadisconnected.aid);
-      bluepad_wifi_print_ap_diag("event AP_STADISCONNECTED");
-      break;
-    case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
-      printf("WiFi event: AP_STAIPASSIGNED ip=%s\n",
-             IPAddress(info.wifi_ap_staipassigned.ip.addr).toString().c_str());
-      bluepad_wifi_print_ap_diag("event AP_STAIPASSIGNED");
-      break;
-    default:
-      break;
-  }
-}
-
-static void bluepad_wifi_register_debug_events()
-{
-  static bool registered = false;
-  if (!registered)
-  {
-    WiFi.onEvent(bluepad_wifi_debug_event);
-    registered = true;
-  }
-}
-#else
-#define BLUEPAD_WIFI_DEBUG_PRINTF(...)
-#define bluepad_wifi_print_ap_diag(step)
-#define bluepad_wifi_register_debug_events()
-#endif
-
-#if defined(BUILD_BLUEPAD32)
-class BluepadWebAssetResponse final : public AsyncWebServerResponse
-{
-public:
-  BluepadWebAssetResponse(const char *contentType, const uint8_t *content, size_t len)
-      : _content(content), _headSent(0)
-  {
-    _code = 200;
-    _contentType = contentType;
-    _contentLength = len;
-  }
-
-  bool _sourceValid() const override
-  {
-    return _content != nullptr;
-  }
-
-  void _respond(AsyncWebServerRequest *request) override
-  {
-    addHeader("Connection", "close", false);
-    _assembleHead(_head, request->version());
-    _state = RESPONSE_HEADERS;
-    _ack(request, 0, 0);
-  }
-
-  size_t _ack(AsyncWebServerRequest *request, size_t len, uint32_t time) override
-  {
-    UNUSED(time);
-    _ackedLength += len;
-
-    AsyncClient *client = request->client();
-    if (client == nullptr)
-    {
-      _state = RESPONSE_FAILED;
-      return 0;
-    }
-
-    size_t wrote = 0;
-    size_t space = client->space();
-
-    if (_state == RESPONSE_HEADERS)
-    {
-      const size_t headRemaining = _head.length() - _headSent;
-      const size_t toWrite = std::min(space, headRemaining);
-      if (toWrite == 0)
-      {
-        return 0;
-      }
-
-      const size_t written = client->write(_head.c_str() + _headSent, toWrite);
-      _headSent += written;
-      _writtenLength += written;
-      wrote += written;
-      space -= written;
-
-      if (written == 0 || _headSent < _head.length())
-      {
-        return wrote;
-      }
-
-      _head = "";
-      _headSent = 0;
-      _state = RESPONSE_CONTENT;
-    }
-
-    if (_state == RESPONSE_CONTENT)
-    {
-      const size_t contentRemaining = _contentLength - _sentLength;
-      if (contentRemaining == 0)
-      {
-        _state = RESPONSE_WAIT_ACK;
-        return wrote;
-      }
-
-      static constexpr size_t CHUNK_SIZE = 512;
-      uint8_t buffer[CHUNK_SIZE];
-      const size_t toWrite = std::min(std::min(space, contentRemaining), CHUNK_SIZE);
-      if (toWrite == 0)
-      {
-        return wrote;
-      }
-
-      memcpy_P(buffer, _content + _sentLength, toWrite);
-      const size_t written = client->write(reinterpret_cast<const char *>(buffer), toWrite);
-      _sentLength += written;
-      _writtenLength += written;
-      wrote += written;
-
-      if (_sentLength == _contentLength)
-      {
-        _state = RESPONSE_WAIT_ACK;
-      }
-      return wrote;
-    }
-
-    if (_state == RESPONSE_WAIT_ACK && _ackedLength >= _writtenLength)
-    {
-      _state = RESPONSE_END;
-    }
-
-    return wrote;
-  }
-
-private:
-  const uint8_t *_content;
-  String _head;
-  size_t _headSent;
-};
-#endif
 
 #if defined(TARGET_RX)
 #include "TcpMspConnector.h"
@@ -427,13 +183,11 @@ void WebUpdateSendContent(AsyncWebServerRequest *request)
   for (size_t i=0 ; i<WEB_ASSETS_COUNT ; i++) {
     if (url.equals(WEB_ASSETS[i].path)) {
 #if defined(BUILD_BLUEPAD32)
-      auto *response = new BluepadWebAssetResponse(WEB_ASSETS[i].content_type, WEB_ASSETS[i].data, WEB_ASSETS[i].size);
+      AsyncWebServerResponse *response = bluepad_create_web_asset_response(WEB_ASSETS[i].content_type, WEB_ASSETS[i].data, WEB_ASSETS[i].size);
 #else
       AsyncWebServerResponse *response = request->beginResponse(200, WEB_ASSETS[i].content_type, WEB_ASSETS[i].data, WEB_ASSETS[i].size);
 #endif
       response->addHeader("Content-Encoding", "gzip");
-      response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      response->addHeader("Connection", "close");
       request->send(response);
       return;
     }
@@ -1533,10 +1287,6 @@ static void startWiFi(unsigned long now)
   }
 
   DBGLN("Begin Webupdater");
-  BLUEPAD_WIFI_DEBUG_PRINTF("WiFi: Begin Webupdater, connectionState=%d, free_heap=%u\n",
-                            connectionState,
-                            (unsigned)ESP.getFreeHeap());
-  bluepad_wifi_register_debug_events();
 
   WiFi.persistent(false);
   WiFi.disconnect();
@@ -1546,12 +1296,10 @@ static void startWiFi(unsigned long now)
   if (station_ssid[0] == 0) {
     changeTime = now;
     changeMode = WIFI_AP;
-    BLUEPAD_WIFI_DEBUG_PRINTF("WiFi: scheduling AP mode\n");
   }
   else {
     changeTime = now;
     changeMode = WIFI_STA;
-    BLUEPAD_WIFI_DEBUG_PRINTF("WiFi: scheduling STA mode for '%s'\n", station_ssid);
   }
   laststatus = WL_DISCONNECTED;
   wifiStarted = true;
@@ -1688,9 +1436,6 @@ static void startServices()
   #endif
   #if defined(BUILD_BLUEPAD32)
   server.on("/", WebUpdateSendContent);
-  server.on("/bluepad/health", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "ok");
-  });
   #endif
   server.on("/sethome", WebUpdateSetHome);
   server.on("/forget", WebUpdateForget);
@@ -1759,9 +1504,7 @@ static void startServices()
   #endif
 
   servicesStarted = true;
-  #if defined(BUILD_BLUEPAD32)
-  BLUEPAD_WIFI_DEBUG_PRINTF("HTTPUpdateServer ready! Open http://%s in your browser\n", ipAddress.toString().c_str());
-  #else
+  #if !defined(BUILD_BLUEPAD32)
   DBGLN("HTTPUpdateServer ready! Open http://%s.local in your browser", wifi_hostname);
   #endif
   #if defined(TARGET_RX)
@@ -1800,14 +1543,12 @@ static void HandleWebUpdate()
     switch(changeMode) {
       case WIFI_AP:
         DBGLN("Changing to AP mode");
-        BLUEPAD_WIFI_DEBUG_PRINTF("WiFi: Changing to AP mode\n");
         WiFi.disconnect();
         wifiMode = WIFI_AP;
         #if defined(PLATFORM_ESP32)
         WiFi.setHostname(wifi_hostname); // hostname must be set before the mode is set to STA
         #endif
         DBGLN("heap before wifi mode: %u", ESP.getFreeHeap());
-        BLUEPAD_WIFI_DEBUG_PRINTF("WiFi: heap before mode=%u\n", (unsigned)ESP.getFreeHeap());
         #if defined(PLATFORM_ESP32)
         #if defined(BUILD_BLUEPAD32)
         WiFi.setSleep(WIFI_PS_MIN_MODEM);
@@ -1815,14 +1556,7 @@ static void HandleWebUpdate()
         WiFi.setSleep(WIFI_PS_NONE);
         #endif
         #endif
-        {
-          const bool modeSet = WiFi.mode(wifiMode);
-          BLUEPAD_WIFI_DEBUG_PRINTF("WiFi: mode(AP) result=%u sleep_config=%s free_heap=%u\n",
-                                    modeSet ? 1U : 0U,
-                                    bluepad_wifi_ps_name(WiFi.getSleep()),
-                                    (unsigned)ESP.getFreeHeap());
-        }
-        bluepad_wifi_print_ap_diag("after WiFi.mode(AP)");
+        WiFi.mode(wifiMode);
         #if defined(PLATFORM_ESP8266)
         WiFi.setHostname(wifi_hostname); // hostname must be set before the mode is set to STA
         #endif
@@ -1833,33 +1567,13 @@ static void HandleWebUpdate()
         #elif defined(PLATFORM_ESP32)
         WiFi.setTxPower(WIFI_POWER_19_5dBm);
         #endif
-        {
-          const bool configOk = WiFi.softAPConfig(ipAddress, ipAddress, netMsk);
-          BLUEPAD_WIFI_DEBUG_PRINTF("WiFi: softAPConfig ip=%s mask=%s result=%u\n",
-                                    ipAddress.toString().c_str(),
-                                    netMsk.toString().c_str(),
-                                    configOk ? 1U : 0U);
-        }
-        bluepad_wifi_print_ap_diag("after softAPConfig");
-        {
-          const uint8_t channel = webbe_getRandomWifiChannel();
-          const char *ssid = makeUniqueSsid();
-          const bool apStarted = WiFi.softAP(ssid, wifi_ap_password, channel, false, 1);
-          BLUEPAD_WIFI_DEBUG_PRINTF("WiFi: softAP ssid=%s channel=%u result=%u ip=%s free_heap=%u\n",
-                                    ssid,
-                                    channel,
-                                    apStarted ? 1U : 0U,
-                                    WiFi.softAPIP().toString().c_str(),
-                                    (unsigned)ESP.getFreeHeap());
-        }
-        bluepad_wifi_print_ap_diag("after softAP");
+        WiFi.softAPConfig(ipAddress, ipAddress, netMsk);
+        WiFi.softAP(makeUniqueSsid(), wifi_ap_password, webbe_getRandomWifiChannel(), false, 1);
         DBGLN("heap after wifi start AP: %u", ESP.getFreeHeap());
         startServices();
-        bluepad_wifi_print_ap_diag("after startServices");
         break;
       case WIFI_STA:
         DBGLN("Connecting to network '%s'", station_ssid);
-        BLUEPAD_WIFI_DEBUG_PRINTF("WiFi: Connecting to network '%s'\n", station_ssid);
         wifiMode = WIFI_STA;
         #if defined(PLATFORM_ESP32)
         WiFi.setHostname(wifi_hostname); // hostname must be set before the mode is set to STA
