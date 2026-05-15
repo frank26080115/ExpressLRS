@@ -265,7 +265,7 @@ class BluepadPanel extends LitElement {
             </div>
             <div>
                 <button class="mui-btn mui-btn--primary" ?disabled="${this.pairingEnabled}" @click="${(event) => this.setPairing(event, true)}">Enable Pairing</button>
-                <button class="mui-btn mui-btn--primary" ?disabled="${!this.pairingEnabled}" @click="${(event) => this.setPairing(event, false)}" style="background-color: #FF0;">Disable Pairing</button>
+                <button class="mui-btn mui-btn--primary" ?disabled="${!this.pairingEnabled}" @click="${(event) => this.setPairing(event, false)}" style="background-color: #FF0; color: #000;">Disable Pairing</button>
                 <button class="mui-btn mui-btn--danger" ?disabled="${this.devices.length === 0}" @click="${(event) => this.deleteAllDevices(event)}">Forget All Devices</button>
             </div>
             <h4>Paired Devices</h4>
