@@ -8,6 +8,7 @@
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
+#include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -123,6 +124,35 @@ static void Bluepad32InitTask(void *)
     btstack_run_loop_execute();
 }
 
+#if defined(ENABLE_BLUEPAD32_DEBUG)
+static void reportDebugMemory(uint32_t now)
+{
+    static uint32_t lastReportMillis = 0;
+    if (lastReportMillis != 0 && now - lastReportMillis < 1000) {
+        return;
+    }
+    lastReportMillis = now;
+
+    TaskHandle_t currentTaskHandle = xTaskGetCurrentTaskHandle();
+    UBaseType_t currentTaskStack = currentTaskHandle ? uxTaskGetStackHighWaterMark(currentTaskHandle) : 0;
+    UBaseType_t bluepadTaskStack = bluepad32InitTaskHandle ? uxTaskGetStackHighWaterMark(bluepad32InitTaskHandle) : 0;
+
+    printf("BP32 mem: ms=%lu wifi=%u free_heap=%u internal_heap=%u min_internal_heap=%u largest_internal_block=%u current_stack_hwm=%u bluepad_stack_hwm=%u\n",
+           (unsigned long)now,
+           bluepadWifiMode ? 1U : 0U,
+           (unsigned)ESP.getFreeHeap(),
+           (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+           (unsigned)currentTaskStack,
+           (unsigned)bluepadTaskStack);
+}
+#else
+static void reportDebugMemory(uint32_t)
+{
+}
+#endif
+
 static bool processControllers();
 static void onConnectedController(ControllerPtr ctl);
 static void onDisconnectedController(ControllerPtr ctl);
@@ -131,6 +161,7 @@ static void handleControllerData(uint32_t now);
 static void loadBluepadFailsafeValues();
 static void initializeBluepadAuxShadows();
 static uint32_t getAuxLowerLimitCrsf(uint8_t aux_num);
+static void reportDebugMemory(uint32_t now);
 static void sendToWeb();
 
 #if defined(TARGET_RX)
@@ -190,6 +221,9 @@ bool bluepad_init()
 
 void bluepad_poll()
 {
+    uint32_t now = millis();
+    reportDebugMemory(now);
+
     if (!hasSetup)
     {
         if (!bluepadBtstackHookReady) {
@@ -235,8 +269,6 @@ void bluepad_poll()
 
         sendToWeb();
     }
-
-    const uint32_t now = millis();
 
     if (dataUpdated) {
         #if defined(TARGET_RX)
