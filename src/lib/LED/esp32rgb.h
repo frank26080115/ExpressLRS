@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "freertos/semphr.h"
 
 class RgbColor
 {
@@ -28,6 +29,12 @@ private:
     size_t out_buffer_size;
     int num_leds;
     int gpio_pin;
+    mutable SemaphoreHandle_t mutex = nullptr;
+
+protected:
+    bool IsValidPixel(int indexPixel) const;
+    void Lock() const;
+    void Unlock() const;
 
     friend class ESP32LedDriverGRB;
     friend class ESP32LedDriverRGB;

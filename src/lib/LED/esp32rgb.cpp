@@ -2,6 +2,7 @@
 
 #if defined(PLATFORM_ESP32)
 
+#include <algorithm>
 #include <cstring>
 #include "freertos/task.h"
 #include "driver/i2s.h"
@@ -31,19 +32,53 @@ constexpr auto MAX_LEDS = (DMA_BUF_LEN * DMA_BUF_COUNT - 4) / BYTES_PER_LED;
 
 ESP32LedDriver::ESP32LedDriver(const int count, const int pin) : num_leds(count), gpio_pin(pin)
 {
-    num_leds = std::min(count, MAX_LEDS);
+    num_leds = std::max(0, std::min(count, static_cast<int>(MAX_LEDS)));
     out_buffer_size = num_leds * BYTES_PER_LED;
     out_buffer = static_cast<uint16_t *>(heap_caps_malloc(out_buffer_size, MALLOC_CAP_DMA));
-    memset(out_buffer, 0, out_buffer_size);
+    if (out_buffer != nullptr)
+    {
+        memset(out_buffer, 0, out_buffer_size);
+    }
+    mutex = xSemaphoreCreateMutex();
 }
 
 ESP32LedDriver::~ESP32LedDriver()
 {
     heap_caps_free(out_buffer);
+    if (mutex != nullptr)
+    {
+        vSemaphoreDelete(mutex);
+    }
+}
+
+bool ESP32LedDriver::IsValidPixel(const int indexPixel) const
+{
+    return out_buffer != nullptr && indexPixel >= 0 && indexPixel < num_leds;
+}
+
+void ESP32LedDriver::Lock() const
+{
+    if (mutex != nullptr)
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+    }
+}
+
+void ESP32LedDriver::Unlock() const
+{
+    if (mutex != nullptr)
+    {
+        xSemaphoreGive(mutex);
+    }
 }
 
 void ESP32LedDriver::Begin() const
 {
+    if (out_buffer == nullptr || num_leds == 0)
+    {
+        return;
+    }
+
     constexpr i2s_config_t i2s_config = {
         .mode = static_cast<i2s_mode_t>(I2S_MODE_MASTER | I2S_MODE_TX),
         .sample_rate = SAMPLE_RATE,
@@ -75,17 +110,31 @@ void ESP32LedDriver::Begin() const
 
 void ESP32LedDriver::Show() const
 {
+    if (out_buffer == nullptr || num_leds == 0)
+    {
+        return;
+    }
+
+    Lock();
     size_t bytes_written = 0;
     i2s_stop(I2S_NUM);
     if (i2s_write(I2S_NUM, out_buffer, out_buffer_size, &bytes_written, 0) == ESP_OK)
     {
         i2s_start(I2S_NUM);
     }
+    Unlock();
 }
 
 void ESP32LedDriver::ClearTo(const RgbColor color, const int first, const int last)
 {
-    for (auto i=first ; i<=std::max(last, num_leds-1); i++)
+    const auto firstPixel = std::max(first, 0);
+    const auto lastPixel = std::min(last, num_leds - 1);
+    if (firstPixel > lastPixel)
+    {
+        return;
+    }
+
+    for (auto i=firstPixel ; i<=lastPixel; i++)
     {
         SetPixelColor(i, color);
     }
@@ -104,7 +153,8 @@ static const int bit_order[] = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
 
 void ESP32LedDriverGRB::SetPixelColor(const int indexPixel, const RgbColor color)
 {
-    if (indexPixel < num_leds)
+    Lock();
+    if (IsValidPixel(indexPixel))
     {
         const auto loc = indexPixel * 24;
         for(auto bit_pos = 0 ; bit_pos < 8 ; bit_pos++)
@@ -115,11 +165,13 @@ void ESP32LedDriverGRB::SetPixelColor(const int indexPixel, const RgbColor color
             out_buffer[loc + bit_pos + 16] = (color.B & bit) ? 0xFFE0 : 0xF000;
         }
     }
+    Unlock();
 }
 
 void ESP32LedDriverRGB::SetPixelColor(const int indexPixel, const RgbColor color)
 {
-    if (indexPixel < num_leds)
+    Lock();
+    if (IsValidPixel(indexPixel))
     {
         const auto loc = indexPixel * 24;
         for(auto bit_pos = 0 ; bit_pos < 8 ; bit_pos++)
@@ -130,6 +182,7 @@ void ESP32LedDriverRGB::SetPixelColor(const int indexPixel, const RgbColor color
             out_buffer[loc + bit_pos + 16] = (color.B & bit) ? 0xFFE0 : 0xF000;
         }
     }
+    Unlock();
 }
 
 #endif

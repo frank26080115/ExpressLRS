@@ -9,13 +9,13 @@
 
 #if !defined(BUILD_DISABLE_RGB_LED)
 
-static uint8_t pixelCount;
-static uint8_t *statusLEDs;
-static uint8_t statusLEDcount;
-static uint8_t *vtxStatusLEDs;
-static uint8_t vtxLEDcount;
-static uint8_t *bootLEDs;
-static uint8_t bootLEDcount;
+static int pixelCount;
+static int16_t *statusLEDs;
+static int statusLEDcount;
+static int16_t *vtxStatusLEDs;
+static int vtxLEDcount;
+static int16_t *bootLEDs;
+static int bootLEDcount;
 
 #if defined(PLATFORM_ESP32)
 #include "esp32rgb.h"
@@ -30,6 +30,91 @@ static NeoPixelBus<NeoRgbFeature, METHOD> *striprgb;
 
 void rgbled_dynamicUpdate();
 
+static void includeLEDIndexInPixelCount(const int index)
+{
+    if (index >= pixelCount)
+    {
+        pixelCount = index + 1;
+    }
+}
+
+static bool WS281BstripReady()
+{
+    if (OPT_WS2812_IS_GRB)
+    {
+        return stripgrb != nullptr;
+    }
+    return striprgb != nullptr;
+}
+
+static bool WS281BisValidLED(const int index)
+{
+    return WS281BstripReady() && index >= 0 && index < pixelCount;
+}
+
+static RgbColor WS281Bcolor(const uint32_t color)
+{
+    return RgbColor(color >> 16, color >> 8, color);
+}
+
+static void WS281BsetPixelColor(const int index, const RgbColor color)
+{
+    if (!WS281BisValidLED(index))
+    {
+        return;
+    }
+
+    if (OPT_WS2812_IS_GRB)
+    {
+        stripgrb->SetPixelColor(index, color);
+    }
+    else
+    {
+        striprgb->SetPixelColor(index, color);
+    }
+}
+
+static void WS281Bshow()
+{
+    if (!WS281BstripReady())
+    {
+        return;
+    }
+
+    if (OPT_WS2812_IS_GRB)
+    {
+        stripgrb->Show();
+    }
+    else
+    {
+        striprgb->Show();
+    }
+}
+
+static void WS281BclearTo(const RgbColor color, int first, int last)
+{
+    if (!WS281BstripReady())
+    {
+        return;
+    }
+
+    first = max(first, 0);
+    last = min(last, pixelCount - 1);
+    if (first > last)
+    {
+        return;
+    }
+
+    if (OPT_WS2812_IS_GRB)
+    {
+        stripgrb->ClearTo(color, first, last);
+    }
+    else
+    {
+        striprgb->ClearTo(color, first, last);
+    }
+}
+
 void WS281Binit()
 {
     if (OPT_WS2812_IS_GRB)
@@ -40,8 +125,6 @@ void WS281Binit()
         stripgrb = new NeoPixelBus<NeoGrbFeature, METHOD>(pixelCount, GPIO_PIN_LED_WS2812);
 #endif
         stripgrb->Begin();
-        stripgrb->ClearTo(RgbColor(0), 0, pixelCount-1);
-        stripgrb->Show();
     }
     else
     {
@@ -51,44 +134,23 @@ void WS281Binit()
         striprgb = new NeoPixelBus<NeoRgbFeature, METHOD> (pixelCount, GPIO_PIN_LED_WS2812);
 #endif
         striprgb->Begin();
-        striprgb->ClearTo(RgbColor(0), 0, pixelCount-1);
-        striprgb->Show();
     }
+    WS281BclearTo(RgbColor(0), 0, pixelCount-1);
+    WS281Bshow();
 }
 
 void WS281BsetLED(int index, uint32_t color)
 {
-    if (OPT_WS2812_IS_GRB)
-    {
-        stripgrb->SetPixelColor(index, RgbColor(color >> 16, color >> 8, color));
-    }
-    else
-    {
-        striprgb->SetPixelColor(index, RgbColor(color >> 16, color >> 8, color));
-    }
+    WS281BsetPixelColor(index, WS281Bcolor(color));
 }
 
 void WS281BsetLED(uint32_t color)
 {
     for (int i=0 ; i<statusLEDcount ; i++)
     {
-        if (OPT_WS2812_IS_GRB)
-        {
-            stripgrb->SetPixelColor(statusLEDs[i], RgbColor(color >> 16, color >> 8, color));
-        }
-        else
-        {
-            striprgb->SetPixelColor(statusLEDs[i], RgbColor(color >> 16, color >> 8, color));
-        }
+        WS281BsetLED(statusLEDs[i], color);
     }
-    if (OPT_WS2812_IS_GRB)
-    {
-        stripgrb->Show();
-    }
-    else
-    {
-        striprgb->Show();
-    }
+    WS281Bshow();
 }
 
 typedef struct {
@@ -280,49 +342,21 @@ static int blinkyUpdate() {
         {
             c.h += 16;
             auto color = HsvToRgb(c);
-            if (OPT_WS2812_IS_GRB)
-            {
-                stripgrb->SetPixelColor(bootLEDs[i], RgbColor(color >> 16, color >> 8, color));
-            }
-            else
-            {
-                striprgb->SetPixelColor(bootLEDs[i], RgbColor(color >> 16, color >> 8, color));
-            }
+            WS281BsetPixelColor(bootLEDs[i], WS281Bcolor(color));
         }
-        if (OPT_WS2812_IS_GRB)
-        {
-            stripgrb->Show();
-        }
-        else
-        {
-            striprgb->Show();
-        }
+        WS281Bshow();
     }
     if ((int)blinkyColor.h + hueStepValue > 255) {
         if ((int)blinkyColor.v - lightnessStep < 0) {
             blinkyState = NORMAL;
             if (pixelCount != 1)
             {
-                if (OPT_WS2812_IS_GRB)
-                {
-                    stripgrb->ClearTo(RgbColor(0), 0, pixelCount-1);
-                }
-                else
-                {
-                    striprgb->ClearTo(RgbColor(0), 0, pixelCount-1);
-                }
+                WS281BclearTo(RgbColor(0), 0, pixelCount-1);
             }
             #if defined(TARGET_TX)
             setButtonColors(config.GetButtonActions(0)->val.color, config.GetButtonActions(1)->val.color);
             #endif
-            if (OPT_WS2812_IS_GRB)
-            {
-                stripgrb->Show();
-            }
-            else
-            {
-                striprgb->Show();
-            }
+            WS281Bshow();
             return NORMAL_UPDATE_INTERVAL;
         }
         blinkyColor.v -= lightnessStep;
@@ -340,26 +374,26 @@ static bool initialize()
         statusLEDcount = WS2812_STATUS_LEDS_COUNT;
         if (statusLEDcount == 0)
         {
-            statusLEDs = new uint8_t[1];
+            statusLEDs = new int16_t[1];
             statusLEDs[0] = 0;
             statusLEDcount = 1;
         }
         else
         {
-            statusLEDs = new uint8_t[statusLEDcount];
+            statusLEDs = new int16_t[statusLEDcount];
             for (int i=0 ; i<statusLEDcount ; i++)
             {
                 statusLEDs[i] = WS2812_STATUS_LEDS[i];
-                pixelCount = max((int)pixelCount, statusLEDs[i]+1);
+                includeLEDIndexInPixelCount(statusLEDs[i]);
             }
         }
 
         vtxLEDcount = WS2812_VTX_STATUS_LEDS_COUNT;
-        vtxStatusLEDs = new uint8_t[vtxLEDcount];
+        vtxStatusLEDs = new int16_t[vtxLEDcount];
         for (int i=0 ; i<vtxLEDcount ; i++)
         {
             vtxStatusLEDs[i] = WS2812_VTX_STATUS_LEDS[i];
-            pixelCount = max((int)pixelCount, vtxStatusLEDs[i]+1);
+            includeLEDIndexInPixelCount(vtxStatusLEDs[i]);
         }
 
         bootLEDcount = WS2812_BOOT_LEDS_COUNT;
@@ -370,13 +404,17 @@ static bool initialize()
         }
         else
         {
-            bootLEDs = new uint8_t[bootLEDcount];
+            bootLEDs = new int16_t[bootLEDcount];
             for (int i=0 ; i<bootLEDcount ; i++)
             {
                 bootLEDs[i] = WS2812_BOOT_LEDS[i];
-                pixelCount = max((int)pixelCount, bootLEDs[i]+1);
+                includeLEDIndexInPixelCount(bootLEDs[i]);
             }
         }
+        #if defined(PLATFORM_ESP32) && defined(TARGET_TX)
+        includeLEDIndexInPixelCount(USER_BUTTON_LED);
+        includeLEDIndexInPixelCount(USER_BUTTON2_LED);
+        #endif
         WS281Binit();
         blinkyColor.h = 0;
         blinkyColor.s = 255;
