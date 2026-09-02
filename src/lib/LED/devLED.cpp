@@ -9,6 +9,8 @@
 #include "POWERMGNT.h"
 #endif
 
+#include "CustomCodeHooks.h"
+
 constexpr uint8_t LEDSEQ_RADIO_FAILED[] = { 20, 100 }; // 200ms on, 1000ms off
 constexpr uint8_t LEDSEQ_DISCONNECTED[] = { 50, 50 };  // 500ms on, 500ms off
 constexpr uint8_t LEDSEQ_WIFI_UPDATE[] = { 2, 3 };     // 20ms on, 30ms off
@@ -168,6 +170,12 @@ static void setPowerLEDs()
 
 static int event()
 {
+    int retval = 0;
+    if (customcodehooks_onledevent(&retval, (int)connectionState, (int)hasRGBLeds))
+    {
+        return retval;
+    }
+
     #if defined(TARGET_RX) && defined(BUILD_SERVOS_MOVE_BLINK)
         if (servos_movedBlinkLed)
         {

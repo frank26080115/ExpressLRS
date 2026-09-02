@@ -3,6 +3,7 @@
 #include "common.h"
 #include "crc.h"
 #include <string.h>
+#include "CustomCodeHooks.h"
 
 static GENERIC_CRC8* kiss_crc = NULL;
 static constexpr uint32_t AM32KISS_TELEMETRY_INTERVAL_MS = 100;
@@ -20,6 +21,11 @@ static void am32kiss_sendTelemetry(const kiss_telem_pkt_t *data)
         return;
     }
     last_telem_send_time = now;
+
+    if (customcodehooks_onam32kisstelemetry((void*)data))
+    {
+        return;
+    }
 
     const uint16_t voltage = kiss_read_u16(data->voltage_h, data->voltage_l);
     const uint16_t current = kiss_read_u16(data->current_h, data->current_l);

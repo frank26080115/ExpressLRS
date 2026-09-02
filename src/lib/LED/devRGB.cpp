@@ -7,6 +7,8 @@
 #include "crsf_protocol.h"
 #include "POWERMGNT.h"
 
+#include "CustomCodeHooks.h"
+
 #if !defined(BUILD_DISABLE_RGB_LED)
 
 static uint8_t pixelCount;
@@ -403,6 +405,12 @@ static int start()
 
 static int timeout()
 {
+    int retval = 0;
+    if (customcodehooks_onledevent(&retval, (int)connectionState, (int)blinkyState))
+    {
+        return retval;
+    }
+
     if (blinkyState == STARTUP && connectionState < FAILURE_STATES)
     {
         return blinkyUpdate();

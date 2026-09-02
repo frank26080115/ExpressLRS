@@ -5,6 +5,7 @@
 #include "device.h"
 #include "config.h"
 #include "CustomMixer.h"
+#include "CustomCodeHooks.h"
 #include "vesc_buffer.h"
 #if defined(PLATFORM_ESP32)
 #include <WiFi.h>
@@ -458,6 +459,11 @@ static void vesc_sendTelemetry(vesc_telem_t* data)
     uint16_t current = 0;
     int32_t rpmValue = 0;
     uint32_t rpm = 0;
+
+    if(customcodehooks_onvesctelemetry((void*)data))
+    {
+        return;
+    }
 
     if (data->inpVoltage > 0.0f) {
         float scaledVoltage = data->inpVoltage * 10.0f;

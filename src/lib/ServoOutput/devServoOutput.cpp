@@ -10,6 +10,7 @@
 #include "CustomMixer.h"
 #include "ShrewHBridge.h"
 #include "WebBackend.h"
+#include "CustomCodeHooks.h"
 
 static int8_t servoPins[PWM_MAX_CHANNELS];
 static pwm_channel_t pwmChannels[PWM_MAX_CHANNELS];
@@ -159,6 +160,8 @@ void servosFailsafe(bool no_pulse)
             // do nothing
         }
     }
+
+    customcodehooks_onservofailsafe(no_pulse);
 }
 
 static void servoCalcAllChannels(servoWrite_fn write)
@@ -242,6 +245,8 @@ void servosUpdate(unsigned long now)
     // for ESP32-C3's implementation of DShotRMT, there's extra tasks to take care of even if no update is needed
     DShotRMT::poll();
     #endif
+
+    customcodehooks_onservo(now, newChannelsAvailable);
 
     if (newChannelsAvailable)
     {

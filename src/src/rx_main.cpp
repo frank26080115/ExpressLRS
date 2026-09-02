@@ -42,6 +42,7 @@
 #include "RXOTAConnector.h"
 #include "rx-serial/devSerialIO.h"
 #include "AM32.h"
+#include "CustomCodeHooks.h"
 
 #include <LittleFS.h>
 #if defined(PLATFORM_ESP8266)
@@ -813,6 +814,8 @@ void ICACHE_RAM_ATTR HWtimerCallbackTock()
 
 void LostConnection(bool resumeRx)
 {
+    const bool wasConnected = (connectionState == connected);
+
     DBGLN("lost conn fc=%d fo=%d", FreqCorrection, hwTimer::getFreqOffset());
 
     setConnectionState(disconnected); //set lost connection
@@ -840,6 +843,11 @@ void LostConnection(bool resumeRx)
         {
             Radio.RXnb();
         }
+    }
+
+    if (wasConnected)
+    {
+        customcodehooks_onrfdisconnect(resumeRx);
     }
 }
 
@@ -886,6 +894,8 @@ void GotConnection(unsigned long now)
         ((SerialAirPort *)serialIO)->apInputBuffer.flush();
         ((SerialAirPort *)serialIO)->apOutputBuffer.flush();
     }
+
+    customcodehooks_onrfconnect(now, (int)connectionState);
 
     DBGLN("got conn");
 }
@@ -2048,6 +2058,8 @@ void resetConfigAndReboot()
 
 void setup()
 {
+    customcodehooks_setup();
+
     #if defined(BUILD_SHREW_HBRIDGE_MEGA)
     pinMode(4, OUTPUT);
     digitalWrite(4, HIGH);
@@ -2143,6 +2155,8 @@ void setup()
     // setup() eats up some of this time, which can cause the first mode connection to fail.
     // Resetting the time here give the first mode a better chance of connection.
     RFmodeLastCycled = millis();
+
+    customcodehooks_postsetup();
 }
 
 #if defined(PLATFORM_ESP32_C3)
@@ -2151,6 +2165,8 @@ void main_loop()
 void loop()
 #endif
 {
+    customcodehooks_onloop();
+
     unsigned long now = millis();
 
     if (DataUlReceiver.HasFinishedData())
