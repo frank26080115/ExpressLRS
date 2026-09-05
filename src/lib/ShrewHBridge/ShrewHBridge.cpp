@@ -1,16 +1,14 @@
+#include "ShrewHBridge.h"
+#include "PWM.h"
+#include "crsf_protocol.h"
+#include "logging.h"
+
 #ifdef BUILD_SHREW_HBRIDGE
 #if (defined(GPIO_PIN_PWM_OUTPUTS) && defined(PLATFORM_ESP32))
 
 #if !defined(BUILD_SHREW_HBRIDGE_PRO) && !defined(BUILD_SHREW_HBRIDGE_MEGA) && !defined(BUILD_SHREW_HBRIDGE_LITE) && !defined(BUILD_SHREW_HBRIDGE_MINI)
 #error MUST PICK WHICH ESC VERSION
 #endif
-
-#include "device.h" // tricks compiler into having correct include paths
-#include "ShrewHBridge.h"
-#include "devServoOutput.h"
-#include "PWM.h"
-#include "crsf_protocol.h"
-#include "logging.h"
 
 enum {
     HBRIDGE_IDX_A1 = 0,
@@ -21,7 +19,7 @@ enum {
 
 #define HBRIDGE_PWM_FREQ 24000U
 
-extern uint32_t ChannelDataMixed[CRSF_NUM_CHANNELS];
+extern uint32_t ChannelDataMixed[];
 static pwm_channel_t hbridge_channels[4];
 static bool has_init = false;
 static unsigned long move_time = 0;
