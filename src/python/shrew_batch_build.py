@@ -1,4 +1,7 @@
 BUILD_TARGETS = [
+    ["Unified_ShrewZero_2400_RX_via_UART", None],
+    ["Unified_ShrewESCLite_2400_RX_via_UART", None],
+    ["Unified_ShrewESCPro_2400_RX_via_UART", None],
     ["Unified_ShrewForXR2_2400_RX_via_UART", None],
     ["Unified_ShrewForRP4TD_2400_RX_via_UART", None],
     ["Unified_ShrewForRP4TD_VESC_2400_RX_via_UART", None],
@@ -76,6 +79,11 @@ def parse_args():
         "--build-web-wsl",
         action="store_true",
         help="Run the optional web build through WSL. Implies --build-web.",
+    )
+    parser.add_argument(
+        "--skip-user-defines-check",
+        action="store_true",
+        help="Skip validation that blocks batch builds when user_defines.txt contains binding phrases or debug defines.",
     )
     return parser.parse_args()
 
@@ -301,7 +309,8 @@ def copy_target_result(target, hardware_name):
 def main():
     args = parse_args()
     os.chdir(PROJECT_DIR)
-    validate_user_defines()
+    if not args.skip_user_defines_check:
+        validate_user_defines()
     if args.build_web or args.build_web_wsl:
         build_web_headers(args.build_web_wsl)
     RUN_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
