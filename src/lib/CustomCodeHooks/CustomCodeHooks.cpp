@@ -37,16 +37,27 @@ void customcodehooks_onservo(unsigned long now, bool newChannelsAvailable)
     (void)newChannelsAvailable;
 }
 
-// always called at the top of the devLED or devRGB `event()` function
+// always called at the top of the devLED `event()` function
 // returning true will override the LED event and return the value in `*retval`
 // returning false will allow the normal LED event to continue
-// `p1` is the `connectionState`, `p2` is the `blinkyState` (for `devRGB`) or `hasRGBLeds` (for `devLED`)
 // the contents of `retval` is supposed to be the milliseconds between LED updates, as it will be used as the return value of the `event()` function
-bool customcodehooks_onledevent(int* retval, int p1, int p2)
+bool customcodehooks_onledevent(int *retval, int connectionState, bool hasRGBLeds)
 {
     (void)retval;
-    (void)p1;
-    (void)p2;
+    (void)connectionState;
+    (void)hasRGBLeds;
+    return false;
+}
+
+// always called at the top of the devRGB `event()` function
+// returning true will override the RGB LED event and return the value in `*retval`
+// returning false will allow the normal RGB LED event to continue
+// the contents of `retval` is supposed to be the milliseconds between RGB LED updates, as it will be used as the return value of the `event()` function
+bool customcodehooks_onrgbevent(int *retval, int connectionState, int blinkyState)
+{
+    (void)retval;
+    (void)connectionState;
+    (void)blinkyState;
     return false;
 }
 

@@ -34,6 +34,14 @@ static uint32_t activity_until = 0;
 
 static int event();
 
+void LEDsetState(int8_t pin, bool inverted, bool on)
+{
+    if (pin != UNDEF_PIN)
+    {
+        digitalWrite(pin, (on ? HIGH : LOW) ^ inverted);
+    }
+}
+
 static uint16_t updateLED()
 {
     if (_pin == UNDEF_PIN)
@@ -171,7 +179,7 @@ static void setPowerLEDs()
 static int event()
 {
     int retval = 0;
-    if (customcodehooks_onledevent(&retval, (int)connectionState, (int)hasRGBLeds))
+    if (customcodehooks_onledevent(&retval, (int)connectionState, hasRGBLeds))
     {
         return retval;
     }
