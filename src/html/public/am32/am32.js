@@ -4,7 +4,7 @@ function am32_init()
     getEleById("tbl_checkboxes").innerHTML      = make_all_checkboxes(plain_checkboxes);
     getEleById("tbl_sliders").innerHTML         = make_all_sliders(plain_sliders);
     getEleById("tbl_checkboxes_219").innerHTML  = make_all_checkboxes(more_checkboxes);
-    getEleById("tbl_sliders_219").innerHTML     = make_all_sliders(more_sliders);
+    getEleById("tbl_sliders_219").innerHTML     = make_all_sliders(more_sliders) + make_brake_on_zero_throttle();
     getEleById("tbl_extracheckboxes").innerHTML = make_all_checkboxes(extra_checkboxes);
     getEleById("tbl_extrasliders").innerHTML    = make_all_sliders(extra_sliders);
     getEleById("btn_fwupdate").addEventListener("change", fwupdate, false);
@@ -165,7 +165,7 @@ let mcu_data = [
     {
         "name": "Generic 128K",
         "signature": [0x2B,0x06],
-        "eeprom_start": 0xF800,
+        "eeprom_start": 0x1F800,
         "flash_start": 0x1000,
         "addr_multi": 4
     }
@@ -200,7 +200,8 @@ let plain_checkboxes = [
     ["Stall Protection",       false, 29, ],
     ["Sinusoidal Startup",     false, 19, ],
     ["Telemetry 30ms",         false, 31, ],
-    ["Auto Advance",           false, 39, ],
+    ["Use Hall Sensors",       false, 39, ],
+    ["Auto Advance",           false, 47, ],
     ["Low Voltage Cutoff",     false, 36, ],
     ["Double Tap Reverse",     false, 38, ],
 ];
@@ -352,6 +353,32 @@ function make_all_sliders(sld_arr)
         t += "</div>\r\n";
     }
     return t;
+}
+
+function make_brake_on_zero_throttle()
+{
+    let t = "<div id=\"row_brakeonzerothrottle\" style=\"display: none;\">\r\n";
+    t += "<div style=\"display: table-cell; text-align: right; padding-right:5pt;\"><label for=\"drop_brakeonzerothrottle\">Brake On Zero Throttle</label></div>\r\n";
+    t += "<div style=\"display: table-cell; text-align: left; padding-right:10pt;\"><select id=\"drop_brakeonzerothrottle\">\r\n";
+    t += "<option value=\"0\">Normal</option>\r\n";
+    t += "<option value=\"1\">Coast</option>\r\n";
+    t += "<option value=\"2\">Brake</option>\r\n";
+    for (let seconds = 1; seconds <= 7; seconds++) {
+        t += `<option value="${seconds + 2}">Brake after ${seconds} second${seconds == 1 ? "" : "s"}</option>\r\n`;
+    }
+    t += "</select></div>\r\n";
+    t += "</div>\r\n";
+    return t;
+}
+
+function update_brake_on_zero_throttle_visibility()
+{
+    let row = getEleById("row_brakeonzerothrottle");
+    if (row == null) {
+        return;
+    }
+    let is_supported = current_chip != null && current_chip["eeprom_layout"] >= 4;
+    row.style.display = is_supported ? "table-row" : "none";
 }
 
 function txt_onchange(i)
@@ -583,6 +610,16 @@ function readBin(barr, isFile)
                 txt_onchange(text_to_id(sld[0]));
             }
 
+            update_brake_on_zero_throttle_visibility();
+            if (current_chip["eeprom_layout"] >= 4) {
+                let brake_on_zero_throttle = barr[13];
+                if (brake_on_zero_throttle > 9) {
+                    dbg_txt += "Brake On Zero Throttle value " + brake_on_zero_throttle + " is out of range\r\n";
+                    brake_on_zero_throttle = 0;
+                }
+                getEleById("drop_brakeonzerothrottle").value = brake_on_zero_throttle;
+            }
+
             let drop_rcinput = getEleById("drop_rcinput");
             if (barr[46] >= 0 && barr[46] < 10) {
                 drop_rcinput.value = "x_" + barr[46].toString();
@@ -710,6 +747,10 @@ function generateBin()
 
     let drop_rcinput = getEleById("drop_rcinput");
     buffer8[46] = Math.round(parseInt(drop_rcinput.value.substring(2)));
+
+    if (current_chip["eeprom_layout"] >= 4) {
+        buffer8[13] = Math.round(parseInt(getEleById("drop_brakeonzerothrottle").value));
+    }
 
     let is_219;
     is_219 = current_chip["eeprom_layout"] >= 3 && current_chip["fw_version_major"] == 2 && current_chip["fw_version_minor"] >= 19;
