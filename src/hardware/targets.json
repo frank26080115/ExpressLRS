@@ -41,7 +41,7 @@
             "shrewforxr2vesc": {
                 "product_name": "Shrew for XR2 (VESC)",
                 "lua_name": "Shrew-for-XR2-VESC",
-                "layout_file": "ShrewForXR2_VESC.json",
+                "layout_file": "ShrewForXR2_CRSF.json",
                 "upload_methods": ["uart", "wifi"],
                 "min_version": "3.5.0",
                 "platform": "esp32-c3",
