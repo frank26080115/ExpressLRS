@@ -60,12 +60,25 @@ void WS281Binit()
 
 void WS281BsetLED(int index, uint32_t color)
 {
+    if (index < 0 || index >= pixelCount)
+    {
+        return;
+    }
+
     if (OPT_WS2812_IS_GRB)
     {
+        if (stripgrb == nullptr)
+        {
+            return;
+        }
         stripgrb->SetPixelColor(index, RgbColor(color >> 16, color >> 8, color));
     }
     else
     {
+        if (striprgb == nullptr)
+        {
+            return;
+        }
         striprgb->SetPixelColor(index, RgbColor(color >> 16, color >> 8, color));
     }
 }
@@ -74,28 +87,41 @@ void WS281BsetLED(uint32_t color)
 {
     for (int i=0 ; i<statusLEDcount ; i++)
     {
-        if (OPT_WS2812_IS_GRB)
-        {
-            stripgrb->SetPixelColor(statusLEDs[i], RgbColor(color >> 16, color >> 8, color));
-        }
-        else
-        {
-            striprgb->SetPixelColor(statusLEDs[i], RgbColor(color >> 16, color >> 8, color));
-        }
+        WS281BsetLED(statusLEDs[i], color);
     }
+    WS281Bshow();
+}
+
+uint8_t WS281BgetPixelCount()
+{
+    return pixelCount;
+}
+
+void WS281Bshow()
+{
     if (OPT_WS2812_IS_GRB)
     {
-        stripgrb->Show();
+        if (stripgrb != nullptr)
+        {
+            stripgrb->Show();
+        }
     }
     else
     {
-        striprgb->Show();
+        if (striprgb != nullptr)
+        {
+            striprgb->Show();
+        }
     }
 }
 
-typedef struct {
-    uint8_t h, s, v;
-} blinkyColor_t;
+void WS281Bclear()
+{
+    for (int i=0 ; i<pixelCount ; i++)
+    {
+        WS281BsetLED(i, 0);
+    }
+}
 
 uint32_t HsvToRgb(const blinkyColor_t &blinkyColor)
 {
@@ -406,7 +432,7 @@ static int start()
 static int timeout()
 {
     int retval = 0;
-    if (customcodehooks_onledevent(&retval, (int)connectionState, (int)blinkyState))
+    if (customcodehooks_onrgbevent(&retval, (int)connectionState, (int)blinkyState))
     {
         return retval;
     }
@@ -539,10 +565,6 @@ void rgbled_dynamicUpdate()
 
 #else // #ifndef BUILD_DISABLE_RGB_LED
 
-typedef struct {
-    uint8_t h, s, v;
-} blinkyColor_t;
-
 void WS281Binit()
 {
 }
@@ -556,6 +578,19 @@ void WS281BsetLED(int index, uint32_t color)
 void WS281BsetLED(uint32_t color)
 {
     (void)color;
+}
+
+uint8_t WS281BgetPixelCount()
+{
+    return 0;
+}
+
+void WS281Bshow()
+{
+}
+
+void WS281Bclear()
+{
 }
 
 uint32_t HsvToRgb(const blinkyColor_t &blinkyColor)
