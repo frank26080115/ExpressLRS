@@ -1789,6 +1789,9 @@ void RxConfig::SetOtherDefaults()
     #if defined(USE_AM32KISS)
     m_config.serialProtocol = PROTOCOL_AM32KISS;
     #endif
+    #if defined(USE_AM32KISS_SER1)
+    m_config.serial1Protocol = PROTOCOL_SERIAL1_AM32KISS;
+    #endif
 }
 
 #endif

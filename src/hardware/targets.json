@@ -47,6 +47,15 @@
                 "platform": "esp32-c3",
                 "firmware": "Unified_ShrewForXR2_2400_RX"
             },
+            "shrewforxr2kiss": {
+                "product_name": "Shrew for XR2 (KISS)",
+                "lua_name": "Shrew-for-XR2-KISS",
+                "layout_file": "ShrewForXR2_KISS.json",
+                "upload_methods": ["uart", "wifi"],
+                "min_version": "3.5.0",
+                "platform": "esp32-c3",
+                "firmware": "Unified_ShrewForXR2_Laceration_2400_RX"
+            },
             "shrewforrp4td": {
                 "product_name": "HSS RP4TD-M",
                 "lua_name": "RM RP4TD-M 2400 HSS",
