@@ -10,6 +10,7 @@ Summary:
  * Configuration Cloning
  * AM32 Configurator
  * VESC Serial Protocol
+ * KISS Telemetry
  * Custom Mixer
  * Activity Indicator LED
  * Unique Wi-Fi SSID
@@ -40,6 +41,10 @@ There is a web configurator built into the Shrew branch ELRS firmware. If you ha
 For big robots or big motors, the VESC serial protocol is implemented in the Shrew branch of ELRS firmware.
 
 This feature is very experimental as I personally do not actually have large motors to play with. This feature is here because I was requested by a few BattleBot teams. If you want to help test this, that'd be great!
+
+### KISS Telemetry
+
+Telemetry data from ESCs outputting KISS telemetry protocol now shows up in EdgeTX radios.
 
 ### Custom Mixer
 
