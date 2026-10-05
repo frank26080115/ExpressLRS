@@ -107,7 +107,11 @@ bool DShotRMT::begin(dshot_mode_t dshot_mode, bool is_bidirectional) {
 		.channel = rmt_channel,
 		.gpio_num = gpio_num,
 		.clk_div = DSHOT_CLK_DIVIDER,
+#ifdef BUILD_SHREW_PWM_ONESHOT
+		.mem_block_num = 1, // Keep channel 1's memory available for servo pulses.
+#else
 		.mem_block_num = uint8_t(RMT_CHANNEL_MAX - uint8_t(rmt_channel)),
+#endif
 		.tx_config = {
 			.idle_level = bidirectional ? RMT_IDLE_LEVEL_HIGH : RMT_IDLE_LEVEL_LOW,
 			.carrier_en = false,

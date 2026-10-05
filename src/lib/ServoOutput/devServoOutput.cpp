@@ -10,6 +10,9 @@
 #include "CustomMixer.h"
 #include "ShrewHBridge.h"
 #include "WebBackend.h"
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+#include "PWM_ESP32_OneShot.h"
+#endif
 #if defined(PLATFORM_ESP8266) && defined(BUILD_SHREW_PWM_ONESHOT)
 #include "waveform_8266.h"
 #endif
@@ -21,6 +24,39 @@ static uint16_t pwmChannelValues[PWM_MAX_CHANNELS];
 #if defined(PLATFORM_ESP32)
 static DShotRMT *dshotInstances[PWM_MAX_CHANNELS] = {nullptr};
 const uint8_t RMT_MAX_CHANNELS = 8;
+#if defined(BUILD_SHREW_PWM_ONESHOT)
+static uint8_t nextRmtChannel = 0;
+static PwmOneShot *pwmOneShotInstances[PWM_MAX_CHANNELS] = {nullptr};
+
+static bool servoInitializePwmOneShot(uint8_t ch, uint8_t pin, uint16_t frequency,
+                                      eServoOutputFailsafeMode failsafeMode)
+{
+    const bool wasInitialized = PwmOneShot::initialized();
+#if defined(PLATFORM_ESP32_C3)
+    const rmt_channel_t channel = RMT_CHANNEL_1; // DShot uses channel 0.
+#else
+    if (!wasInitialized && nextRmtChannel >= RMT_MAX_CHANNELS) {
+        DBGLN("PWM one-shot: no RMT channel for pin %u", pin);
+        return false;
+    }
+    const rmt_channel_t channel = (rmt_channel_t)nextRmtChannel;
+#endif
+    PwmOneShot *instance = new PwmOneShot((gpio_num_t)pin, frequency, failsafeMode);
+    if (!instance->begin(channel)) {
+        DBGLN("PWM one-shot: RMT setup failed for pin %u", pin);
+        delete instance;
+        return false;
+    }
+#if !defined(PLATFORM_ESP32_C3)
+    if (!wasInitialized) {
+        // The first instance reserves the one shared RMT channel.
+        ++nextRmtChannel;
+    }
+#endif
+    pwmOneShotInstances[ch] = instance;
+    return true;
+}
+#endif
 #endif
 
 // true when the RX has a new channels packet
@@ -128,6 +164,11 @@ static void servoWrite(uint8_t ch, uint16_t us)
         }
         else
         {
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+            if (pwmOneShotInstances[ch] != nullptr) {
+                pwmOneShotInstances[ch]->setPulse(us);
+            } else if (pwmChannels[ch] != -1)
+#endif
             PWM.setMicroseconds(pwmChannels[ch], us);
         }
     }
@@ -288,6 +329,9 @@ void servosUpdate(unsigned long now)
         servosFailsafe(connectionState == wifiUpdate && !webbe_ws_started);
         lastUpdate = 0;
     }
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+    PwmOneShot::poll(connectionState == connected);
+#endif
 }
 
 void servo_initializeAll()
@@ -303,7 +347,11 @@ void servo_initializeAll()
     }
 
 #if defined(PLATFORM_ESP32)
+    #if defined(BUILD_SHREW_PWM_ONESHOT)
+    uint8_t &rmtCH = nextRmtChannel;
+    #else
     uint8_t rmtCH = 0;
+    #endif
 #endif
     for (int ch = 0; ch < GPIO_PIN_PWM_OUTPUTS_COUNT; ++ch)
     {
@@ -366,6 +414,12 @@ void servo_initializeEnable()
         const auto frequency = servoOutputModeToFrequency((eServoOutputMode)chConfig->val.mode);
         if (frequency && servoPins[ch] != UNDEF_PIN)
         {
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+            if ((eServoOutputMode)chConfig->val.mode != som10KHzDuty) {
+                servoInitializePwmOneShot(ch, servoPins[ch], frequency,
+                    (eServoOutputFailsafeMode)chConfig->val.failsafeMode);
+            } else
+#endif
             pwmChannels[ch] = PWM.allocate(servoPins[ch], frequency);
 #if defined(PLATFORM_ESP8266) && defined(BUILD_SHREW_PWM_ONESHOT)
             if (pwmChannels[ch] != -1 && (eServoOutputMode)chConfig->val.mode != som10KHzDuty)
@@ -393,6 +447,10 @@ void servo_shutdown()
             pwmChannels[ch] = -1;
         }
 #if defined(PLATFORM_ESP32)
+        #if defined(BUILD_SHREW_PWM_ONESHOT)
+        delete pwmOneShotInstances[ch];
+        pwmOneShotInstances[ch] = nullptr;
+        #endif
         if (dshotInstances[ch] != nullptr)
         {
             delete dshotInstances[ch];
@@ -401,6 +459,9 @@ void servo_shutdown()
 #endif
         servoPins[ch] = UNDEF_PIN;
     }
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+    nextRmtChannel = 0;
+#endif
 }
 
 static bool initialize()
@@ -413,15 +474,23 @@ static int event()
 {
     if (connectionState == disconnected)
     {
-        // Disconnected should come after failsafe on the RX,
-        // so it is safe to shut down when disconnected
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+        // Failsafe positions still need servosUpdate to poll their RMT pulses.
+        return DURATION_IMMEDIATELY;
+#else
+        // Disconnected should come after failsafe on the RX.
         return DURATION_NEVER;
+#endif
     }
     if (connectionState == wifiUpdate)
     {
         //servo_shutdown();
         servosFailsafe(!webbe_installed || !webbe_ws_started);
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+        return DURATION_IMMEDIATELY;
+#else
         return DURATION_NEVER;
+#endif
     }
     if (!servo_initialized && connectionState == connected)
     {
@@ -450,7 +519,11 @@ bool servos_singleInit(int selected_pin)
 {
     bool res = false;
 #if defined(PLATFORM_ESP32)
+    #if defined(BUILD_SHREW_PWM_ONESHOT)
+    uint8_t &rmtCH = nextRmtChannel;
+    #else
     uint8_t rmtCH = 0;
+    #endif
 #endif
     for (int ch = 0; ch < GPIO_PIN_PWM_OUTPUTS_COUNT; ++ch)
     {
@@ -504,6 +577,12 @@ bool servos_singleInit(int selected_pin)
                 auto frequency = servoOutputModeToFrequency((eServoOutputMode)chConfig->val.mode);
                 if (frequency && servoPins[ch] != UNDEF_PIN)
                 {
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+                    if (mode != som10KHzDuty) {
+                        res = servoInitializePwmOneShot(ch, servoPins[ch], frequency,
+                            (eServoOutputFailsafeMode)chConfig->val.failsafeMode);
+                    } else {
+#endif
                     pwmChannels[ch] = PWM.allocate(servoPins[ch], frequency);
 #if defined(PLATFORM_ESP8266) && defined(BUILD_SHREW_PWM_ONESHOT)
                     if (pwmChannels[ch] != -1 && mode != som10KHzDuty)
@@ -511,8 +590,11 @@ bool servos_singleInit(int selected_pin)
                         enableWaveformOneShot8266(servoPins[ch]);
                     }
 #endif
-                    servoWrite(ch, 0);
                     res = true;
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+                    }
+#endif
+                    servoWrite(ch, 0);
                 }
             }
         }
@@ -530,6 +612,10 @@ void servos_deinitAll()
             pwmChannels[ch] = -1;
         }
 #if defined(PLATFORM_ESP32)
+        #if defined(BUILD_SHREW_PWM_ONESHOT)
+        delete pwmOneShotInstances[ch];
+        pwmOneShotInstances[ch] = nullptr;
+        #endif
         if (dshotInstances[ch] != nullptr)
         {
             delete dshotInstances[ch];
@@ -538,6 +624,9 @@ void servos_deinitAll()
 #endif
         servoPins[ch] = UNDEF_PIN;
     }
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+    nextRmtChannel = 0;
+#endif
 }
 
 static int timeout()
