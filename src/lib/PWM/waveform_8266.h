@@ -2,6 +2,11 @@
 
 void startWaveform8266(uint8_t gpio, uint32_t timeHighUS, uint32_t timeLowUS);
 void stopWaveform8266(uint8_t gpio);
+#ifdef BUILD_SHREW_PWM_ONESHOT
+void enableWaveformOneShot8266(uint8_t gpio);
+void disableWaveformOneShot8266(uint8_t gpio);
+void refreshWaveformOneShot8266(uint8_t gpio, uint32_t pulses);
+#endif
 
 #define startWaveform DO_NOT_USE
 #define startWaveformClockCycles DO_NOT_USE

@@ -59,6 +59,10 @@ typedef struct {
   uint32_t timeLowCycles;      //
   uint32_t nextHighLowUs;      // Waveform ideal (us) "on deck", waiting to be changed next cycle
                                // packed into 32 bits to be atomic read/write, 65535us max
+  #ifdef BUILD_SHREW_PWM_ONESHOT
+  volatile uint32_t pulsesRemaining; // Refreshed by servosUpdate; spent on rising edges
+  volatile bool oneShot;       // Leave other PWM users unaffected
+  #endif
 } Waveform;
 
 class WVFState {
@@ -79,6 +83,31 @@ public:
   bool timerRunning = false;
 };
 static WVFState wvfState;
+
+#ifdef BUILD_SHREW_PWM_ONESHOT
+void enableWaveformOneShot8266(uint8_t gpio) {
+  if (gpio > 16 || isFlashInterfacePin(gpio)) {
+    return;
+  }
+  Waveform *wave = &wvfState.waveform[gpio];
+  wave->pulsesRemaining = 0;
+  wave->oneShot = true;
+}
+
+void disableWaveformOneShot8266(uint8_t gpio) {
+  if (gpio > 16 || isFlashInterfacePin(gpio)) {
+    return;
+  }
+  wvfState.waveform[gpio].oneShot = false;
+}
+
+void refreshWaveformOneShot8266(uint8_t gpio, uint32_t pulses) {
+  if (gpio > 16 || isFlashInterfacePin(gpio)) {
+    return;
+  }
+  wvfState.waveform[gpio].pulsesRemaining = pulses;
+}
+#endif
 
 // Ensure everything is read/written to RAM
 #define MEMBARRIER() { __asm__ volatile("" ::: "memory"); }
@@ -254,6 +283,9 @@ static IRAM_ATTR void timer1Interrupt() {
         int32_t cyclesToGo = wave->nextServiceCycle - now;
         if (cyclesToGo < (lastLoopCs / 2)) {
           uint32_t nextEdgeCycles;
+#ifdef BUILD_SHREW_PWM_ONESHOT
+          bool transition = true;
+#endif
           if (wvfState.waveformState & mask) {
             GPOC = mask;
             if (gpio == 16) { // Special handling for GPIO16
@@ -261,6 +293,16 @@ static IRAM_ATTR void timer1Interrupt() {
             }
             nextEdgeCycles = wave->timeLowCycles;
           } else {
+#ifdef BUILD_SHREW_PWM_ONESHOT
+            if (wave->oneShot && wave->pulsesRemaining == 0) {
+              // Check again after one period; leave the output low until refreshed.
+              nextEdgeCycles = wave->timeHighCycles + wave->timeLowCycles;
+              transition = false;
+            } else {
+              if (wave->oneShot) {
+                --wave->pulsesRemaining;
+              }
+#endif
             GPOS = mask;
             if (gpio == 16) { // Special handling for GPIO16
               GP16O = 1;
@@ -274,8 +316,17 @@ static IRAM_ATTR void timer1Interrupt() {
               wave->timeLowCycles = microsecondsToClockCycles(next & 0xffff);
             }
             nextEdgeCycles = wave->timeHighCycles;
+#ifdef BUILD_SHREW_PWM_ONESHOT
+            }
+#endif
           }
+#ifdef BUILD_SHREW_PWM_ONESHOT
+          if (transition) {
+#endif
           wvfState.waveformState ^= mask;
+#ifdef BUILD_SHREW_PWM_ONESHOT
+          }
+#endif
           nextEdgeCycles = adjust(nextEdgeCycles);
           wave->nextServiceCycle = now + nextEdgeCycles;
         }

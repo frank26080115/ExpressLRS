@@ -10,6 +10,9 @@
 #include "CustomMixer.h"
 #include "ShrewHBridge.h"
 #include "WebBackend.h"
+#if defined(PLATFORM_ESP8266) && defined(BUILD_SHREW_PWM_ONESHOT)
+#include "waveform_8266.h"
+#endif
 
 static int8_t servoPins[PWM_MAX_CHANNELS];
 static pwm_channel_t pwmChannels[PWM_MAX_CHANNELS];
@@ -238,6 +241,23 @@ void servosUpdate(unsigned long now)
         servo_initializeEnable();
     }
 
+#if defined(PLATFORM_ESP8266) && defined(BUILD_SHREW_PWM_ONESHOT)
+    // Feed active outputs for 100 ms; no-pulse failsafe outputs stop when the RF link is down.
+    for (int ch = 0; ch < GPIO_PIN_PWM_OUTPUTS_COUNT; ++ch)
+    {
+        if (pwmChannels[ch] != -1 && servoPins[ch] != UNDEF_PIN)
+        {
+            const rx_config_pwm_t *chConfig = config.GetPwmChannel(ch);
+            const uint16_t frequency = servoOutputModeToFrequency((eServoOutputMode)chConfig->val.mode);
+            const bool noPulseFailsafe = chConfig->val.failsafeMode == PWMFAILSAFE_NO_PULSES;
+            if (frequency && frequency != 10000U && (!noPulseFailsafe || connectionState == connected))
+            {
+                refreshWaveformOneShot8266(servoPins[ch], (frequency + 9U) / 10U);
+            }
+        }
+    }
+#endif
+
     #if defined(PLATFORM_ESP32_C3)
     // for ESP32-C3's implementation of DShotRMT, there's extra tasks to take care of even if no update is needed
     DShotRMT::poll();
@@ -347,6 +367,12 @@ void servo_initializeEnable()
         if (frequency && servoPins[ch] != UNDEF_PIN)
         {
             pwmChannels[ch] = PWM.allocate(servoPins[ch], frequency);
+#if defined(PLATFORM_ESP8266) && defined(BUILD_SHREW_PWM_ONESHOT)
+            if (pwmChannels[ch] != -1 && (eServoOutputMode)chConfig->val.mode != som10KHzDuty)
+            {
+                enableWaveformOneShot8266(servoPins[ch]);
+            }
+#endif
         }
 #if defined(PLATFORM_ESP32)
         else if ((eServoOutputMode)chConfig->val.mode == somDShot || (eServoOutputMode)chConfig->val.mode == somDShot3D)
@@ -479,6 +505,12 @@ bool servos_singleInit(int selected_pin)
                 if (frequency && servoPins[ch] != UNDEF_PIN)
                 {
                     pwmChannels[ch] = PWM.allocate(servoPins[ch], frequency);
+#if defined(PLATFORM_ESP8266) && defined(BUILD_SHREW_PWM_ONESHOT)
+                    if (pwmChannels[ch] != -1 && mode != som10KHzDuty)
+                    {
+                        enableWaveformOneShot8266(servoPins[ch]);
+                    }
+#endif
                     servoWrite(ch, 0);
                     res = true;
                 }

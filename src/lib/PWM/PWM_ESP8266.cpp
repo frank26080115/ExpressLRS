@@ -29,6 +29,9 @@ void PWMController::release(pwm_channel_t channel)
 {
     int8_t pin = pwm_gpio[channel];
     stopWaveform8266(pin);
+#ifdef BUILD_SHREW_PWM_ONESHOT
+    disableWaveformOneShot8266(pin);
+#endif
     digitalWrite(pin, LOW);
     refreshInterval[channel] = 0;
     pwm_gpio[channel] = -1;
