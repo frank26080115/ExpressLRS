@@ -20,10 +20,22 @@ DShotRMT::~DShotRMT() {
 bool DShotRMT::begin(dshot_mode_t dshot_mode, bool is_bidirectional) {
 	mode = dshot_mode;
 	bidirectional = is_bidirectional;
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    if (dshotIsSlow(mode)) bidirectional = false;
+#endif
 
 	uint16_t ticks_per_bit;
 
 	switch (mode) {
+#ifdef BUILD_SHREW_SLOW_DSHOT
+        case DSHOT4:
+        case DSHOT8:
+        case DSHOT16:
+            ticks_per_bit = dshotSlowBitTicks(mode);
+            ticks_zero_high = dshotSlowZeroTicks(mode);
+            ticks_one_high = dshotSlowOneTicks(mode);
+            break;
+#endif
 		case DSHOT150:
 			ticks_per_bit = 64; // ...Bit Period Time 6.67 us
 			ticks_zero_high = 24; // ...zero time 2.50 us
@@ -64,7 +76,11 @@ bool DShotRMT::begin(dshot_mode_t dshot_mode, bool is_bidirectional) {
 		.rmt_mode = RMT_MODE_TX,
 		.channel = rmt_channel,
 		.gpio_num = gpio_num,
+#ifdef BUILD_SHREW_SLOW_DSHOT
+        .clk_div = uint8_t(dshotIsSlow(mode) ? 4 : DSHOT_CLK_DIVIDER),
+#else
 		.clk_div = DSHOT_CLK_DIVIDER,
+#endif
 #ifdef BUILD_SHREW_PWM_ONESHOT
 		.mem_block_num = 1, // Other DShot channels and servo pulses use their own blocks.
 #else
@@ -73,7 +89,11 @@ bool DShotRMT::begin(dshot_mode_t dshot_mode, bool is_bidirectional) {
 		.tx_config = {
         	.idle_level = bidirectional ? RMT_IDLE_LEVEL_HIGH : RMT_IDLE_LEVEL_LOW,
 			.carrier_en = false,
+#ifdef BUILD_SHREW_SLOW_DSHOT
+            .loop_en = !dshotIsSlow(mode),
+#else
 			.loop_en = true,
+#endif
 			.idle_output_en = true,
 		},
 	};
@@ -88,7 +108,11 @@ bool DShotRMT::begin(dshot_mode_t dshot_mode, bool is_bidirectional) {
     }
 
 	dshot_tx_rmt_item[DSHOT_PAUSE_BIT].duration1 = 0;
-	dshot_tx_rmt_item[DSHOT_PAUSE_BIT].duration0 = 10000 - (16*ticks_per_bit) - 1;
+	dshot_tx_rmt_item[DSHOT_PAUSE_BIT].duration0 =
+#ifdef BUILD_SHREW_SLOW_DSHOT
+        dshotIsSlow(mode) ? dshotSlowBitTicks(mode) :
+#endif
+        10000 - (16*ticks_per_bit) - 1;
 
 	// setup the RMT end marker
 	dshot_tx_rmt_item[DSHOT_PACKET_LENGTH-1].duration0 = 0;
@@ -104,6 +128,17 @@ bool DShotRMT::begin(dshot_mode_t dshot_mode, bool is_bidirectional) {
 }
 
 void DShotRMT::set_looping(bool x) {
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    if (dshotIsSlow(mode)) {
+        slow_looping = x;
+        if (!x) {
+            has_pending_packet = false;
+            has_sent_packet = false;
+            rmt_tx_stop(rmt_channel);
+        }
+        return;
+    }
+#endif
 	rmt_set_tx_loop_mode(rmt_channel, x);
 }
 
@@ -118,8 +153,20 @@ void DShotRMT::send_dshot_value(uint16_t throttle_value, telemetric_request_t te
 		dshot_rmt_packet.throttle_value = throttle_value;
 	}
 	dshot_rmt_packet.telemetric_request = telemetric_request;
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    if (dshotIsSlow(mode)) dshot_rmt_packet.telemetric_request = NO_TELEMETRIC;
+#endif
 	dshot_rmt_packet.checksum = this->calc_dshot_chksum(dshot_rmt_packet);
 
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    if (dshotIsSlow(mode)) {
+        pending_packet = dshot_rmt_packet;
+        has_pending_packet = true;
+        slow_looping = true;
+        poll();
+        return;
+    }
+#endif
 	output_rmt_data(dshot_rmt_packet);
 }
 
@@ -199,4 +246,19 @@ void DShotRMT::output_rmt_data(const dshot_packet_t& dshot_packet) {
 	rmt_fill_tx_items(rmt_channel, dshot_tx_rmt_item, DSHOT_PACKET_LENGTH, 0);
 	rmt_tx_start(rmt_channel, true);
 }
+
+#ifdef BUILD_SHREW_SLOW_DSHOT
+void DShotRMT::poll() {
+    if (!dshotIsSlow(mode) || (!has_pending_packet && (!slow_looping || !has_sent_packet))) return;
+    const uint32_t now = micros();
+    if (has_sent_packet && now - last_send_time < dshotSlowFrameUs(mode) + 1) return;
+    rmt_channel_status_result_t status;
+    if (rmt_get_channel_status(&status) != ESP_OK || status.status[rmt_channel] != RMT_CHANNEL_IDLE) return;
+    output_rmt_data(pending_packet);
+    last_send_time = micros();
+    has_pending_packet = false;
+    has_sent_packet = true;
+}
+#endif
+
 #endif

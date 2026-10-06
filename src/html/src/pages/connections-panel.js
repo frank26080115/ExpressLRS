@@ -8,6 +8,9 @@ export const PWM_MODE_SERIAL = 10
 export const PWM_MODE_SERIAL2RX = 14
 export const PWM_MODE_SERIAL2TX = 15
 
+const PWM_FEATURE_SLOW_DSHOT = 128
+const isOutputMode = mode => Number(mode) < PWM_MODE_SERIAL || (Number(mode) >= 16 && Number(mode) <= 21)
+
 const PROTOCOL_VESC = 10;
 const PROTOCOL_SERIAL1_VESC = 12;
 
@@ -169,10 +172,11 @@ class ConnectionsPanel extends LitElement {
             const failsafe = (item.config & 2047) + 476; // 11 bits
             const ch = (item.config >> 11) & 15; // 4 bits
             const inv = (item.config >> 15) & 1
-            const mode = (item.config >> 16) & 15; // 4 bits
-            const stretch = (item.config >> 20) & 1
-            const failsafeMode = (item.config >> 22) & 3; // 2 bits
             const features = item.features
+            const slowDshot = !!(features & PWM_FEATURE_SLOW_DSHOT)
+            const mode = (item.config >> 16) & (slowDshot ? 63 : 15)
+            const stretch = (item.config >> (slowDshot ? 22 : 20)) & 1
+            const failsafeMode = (item.config >> (slowDshot ? 24 : 22)) & 3
             const modes = ['50Hz', '60Hz', '100Hz', '160Hz', '333Hz', '400Hz', '10KHzDuty', 'On/Off']
             if (features & 16) {
                 modes.push('DShot', 'DShot-3D')
@@ -193,6 +197,9 @@ class ConnectionsPanel extends LitElement {
             modes.push(undefined)  // true PWM (not yet supported)
             modes.push(features & 32 ? 'Serial2 RX' : undefined)
             modes.push(features & 64 ? 'Serial2 TX' : undefined)
+            if (slowDshot && (features & 16)) {
+                modes.push('DShot4', 'DShot4-3D', 'DShot8', 'DShot8-3D', 'DShot16', 'DShot16-3D')
+            }
 
             htmlFields.push(html`
                 <tr><td class="mui--text-center mui--text-title">${index + 1}</td>
@@ -224,10 +231,10 @@ class ConnectionsPanel extends LitElement {
         }
 
         // disable extra fields for serial & i2c pins
-        setDisabled(index, Number.parseInt(pinMode.value) >= PWM_MODE_SERIAL)
+        setDisabled(index, !isOutputMode(pinMode.value))
 
         const updateOthers = (value, enable) => {
-            if (value > PWM_MODE_SERIAL) { // disable others
+            if (Number(value) > PWM_MODE_SERIAL && !isOutputMode(value)) { // disable others
                 elrsState.config.pwm.forEach((item, other) => {
                     if (other !== index) {
                         document.querySelectorAll(`#pwm_${other}_mode option`).forEach(opt => {
@@ -279,7 +286,7 @@ class ConnectionsPanel extends LitElement {
 
     _failsafeModeChange(failsafeMode, index) {
         const mode = _(`pwm_${index}_mode`).value
-        if (mode < PWM_MODE_SERIAL) {
+        if (isOutputMode(mode)) {
             const failsafeField = _(`pwm_${index}_fs`)
             if (failsafeMode.value === '0') {
                 failsafeField.disabled = false
@@ -312,7 +319,8 @@ class ConnectionsPanel extends LitElement {
             if (normalizeFields) failsafeField.value = failsafe
             let failsafeMode = failsafeModeField.value
 
-            const raw = (failsafeMode << 22) | (stretch << 20) | (mode << 16) | (invert << 15) | (inChannel << 11) | (failsafe - 476)
+            const slowDshot = !!(elrsState.config.pwm[ch].features & PWM_FEATURE_SLOW_DSHOT)
+            const raw = (failsafeMode << (slowDshot ? 24 : 22)) | (stretch << (slowDshot ? 22 : 20)) | (mode << 16) | (invert << 15) | (inChannel << 11) | (failsafe - 476)
             // console.log(`PWM ${ch} mode=${mode} input=${inChannel} fs=${failsafe} fsmode=${failsafeMode} inv=${invert} stretch=${stretch} raw=${raw}`)
             outData.push(raw)
             ++ch

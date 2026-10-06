@@ -24,6 +24,9 @@ static DShotRMT *head_node = NULL, *cur_node = NULL, *tail_node; // linked list 
 static int prev_pin = -1; // we need to remember what the previous GPIO pin used was to remove it from the RMT (setting a new RMT pin does not unset the previous pin)
 
 // latch status to indicate if the RMT driver has been installed or uninstalled, so we don't do it twice 
+#ifdef BUILD_SHREW_SLOW_DSHOT
+static uint32_t inFlightDurationUs = 500;
+#endif
 static bool has_inited = false;
 static bool has_deinited = false;
 
@@ -64,8 +67,20 @@ bool DShotRMT::begin(dshot_mode_t dshot_mode, bool is_bidirectional) {
 
 	mode = dshot_mode;
 	bidirectional = is_bidirectional;
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    if (dshotIsSlow(mode)) bidirectional = false;
+#endif
 
 	switch (mode) {
+#ifdef BUILD_SHREW_SLOW_DSHOT
+        case DSHOT4:
+        case DSHOT8:
+        case DSHOT16:
+            ticks_per_bit = dshotSlowBitTicks(mode);
+            ticks_zero_high = dshotSlowZeroTicks(mode);
+            ticks_one_high = dshotSlowOneTicks(mode);
+            break;
+#endif
 		case DSHOT150:
 			ticks_per_bit = 64; // ...Bit Period Time 6.67 us
 			ticks_zero_high = 24; // ...zero time 2.50 us
@@ -106,7 +121,11 @@ bool DShotRMT::begin(dshot_mode_t dshot_mode, bool is_bidirectional) {
 		.rmt_mode = RMT_MODE_TX,
 		.channel = rmt_channel,
 		.gpio_num = gpio_num,
+#ifdef BUILD_SHREW_SLOW_DSHOT
+        .clk_div = uint8_t(dshotIsSlow(mode) ? 4 : DSHOT_CLK_DIVIDER),
+#else
 		.clk_div = DSHOT_CLK_DIVIDER,
+#endif
 #ifdef BUILD_SHREW_PWM_ONESHOT
 		.mem_block_num = 1, // Keep channel 1's memory available for servo pulses.
 #else
@@ -115,7 +134,11 @@ bool DShotRMT::begin(dshot_mode_t dshot_mode, bool is_bidirectional) {
 		.tx_config = {
 			.idle_level = bidirectional ? RMT_IDLE_LEVEL_HIGH : RMT_IDLE_LEVEL_LOW,
 			.carrier_en = false,
+#ifdef BUILD_SHREW_SLOW_DSHOT
+            .loop_en = !dshotIsSlow(mode),
+#else
 			.loop_en = true,
+#endif
 			.idle_output_en = true,
 		},
 	};
@@ -174,15 +197,26 @@ void DShotRMT::send_dshot_value(uint16_t throttle_value, telemetric_request_t te
 	}
 	
 	next_packet.telemetric_request = telemetric_request;
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    if (dshotIsSlow(mode)) next_packet.telemetric_request = NO_TELEMETRIC;
+#endif
 	next_packet.checksum = this->calc_dshot_chksum(next_packet);
 
-	has_new_data = 10;
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    has_new_data = dshotIsSlow(mode) ? 1 : 10;
+#else
+    has_new_data = 10;
+#endif
 	// only cache the next packet but don't need to encode it or send it yet, it'll be sent later
 }
 
 rmt_item32_t* DShotRMT::encode_dshot_to_rmt(uint16_t parsed_packet) {
 	dshot_tx_rmt_item[DSHOT_PAUSE_BIT].duration1 = 0;
-	dshot_tx_rmt_item[DSHOT_PAUSE_BIT].duration0 = 10000 - (16*ticks_per_bit) - 1;
+	dshot_tx_rmt_item[DSHOT_PAUSE_BIT].duration0 =
+#ifdef BUILD_SHREW_SLOW_DSHOT
+        dshotIsSlow(mode) ? dshotSlowBitTicks(mode) :
+#endif
+        10000 - (16*ticks_per_bit) - 1;
 
 	if (bidirectional) {
 		dshot_tx_rmt_item[DSHOT_PAUSE_BIT].level0 = HIGH; // ...pause "bit" added to each frame
@@ -257,6 +291,10 @@ uint16_t DShotRMT::prepare_rmt_data(const dshot_packet_t& dshot_packet) {
 // ...finally output using ESP32 RMT
 void DShotRMT::output_rmt_data() {
 	rmt_tx_stop(rmt_channel);
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    rmt_set_clk_div(rmt_channel, dshotIsSlow(mode) ? 4 : DSHOT_CLK_DIVIDER);
+    if (dshotIsSlow(mode)) rmt_set_tx_loop_mode(rmt_channel, false);
+#endif
 	set_pin();
 	encode_dshot_to_rmt(prepare_rmt_data(next_packet));
 	rmt_fill_tx_items(rmt_channel, dshot_tx_rmt_item, DSHOT_PACKET_LENGTH, 0);
@@ -283,7 +321,13 @@ void DShotRMT::poll() {
 	}
 	static uint32_t last_time_us = 0;
 	uint32_t now_us = micros();
-	if ((now_us - last_time_us) < 500) {
+	if ((now_us - last_time_us) <
+#ifdef BUILD_SHREW_SLOW_DSHOT
+        inFlightDurationUs
+#else
+        500
+#endif
+        ) {
 		// make sure enough time has passed (RMT driver does not indicate end of transmission at the right time)
 		// the number 500 is found by using a logic analyzer to see how often a dshot packet gets cut off
 		return;
@@ -299,8 +343,11 @@ void DShotRMT::poll() {
 		(inst->looping && (now_us - inst->last_send_time) >= 2000) // limit looping speed
 		) {
 		inst->output_rmt_data(); // actually send the data, this will set the pin first, and clear the has_new_data flag
+#ifdef BUILD_SHREW_SLOW_DSHOT
+        inFlightDurationUs = dshotIsSlow(inst->mode) ? dshotSlowFrameUs(inst->mode) + 1 : 500;
+#endif
 		inst->last_send_time = now_us;
-		last_time_us = now_us;
+		last_time_us = micros();
 	}
 }
 

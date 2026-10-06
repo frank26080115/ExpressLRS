@@ -14,7 +14,7 @@ class DShotRMT {
         void set_looping(bool);
         void send_dshot_value(uint16_t throttle_value, telemetric_request_t telemetric_request = NO_TELEMETRIC);
 
-        static void poll(); // call this as often as possible (or about every 150us)
+        static void poll(); // call frequently; poll waits for the complete frame before switching GPIO
 
     private:
         gpio_num_t gpio_num;

@@ -202,11 +202,11 @@ void am32_handleIo(AsyncWebServerRequest *request)
                             snprintf(pin_str, 62, "PWM %d %d,", ch, pwm_pin);
                             response->print(pin_str);
                         }
-                        else if (mode == somDShot) {
+                        else if (servoOutputModeIsDshot(mode) && !servoOutputModeIsDshot3D(mode)) {
                             snprintf(pin_str, 62, "DSHOT %d %d,", ch, pwm_pin);
                             response->print(pin_str);
                         }
-                        else if (mode == somDShot3D) {
+                        else if (servoOutputModeIsDshot3D(mode)) {
                             snprintf(pin_str, 62, "DSHOT3D %d %d,", ch, pwm_pin);
                             response->print(pin_str);
                         }
@@ -333,8 +333,14 @@ void am32_handleIo(AsyncWebServerRequest *request)
                         rx_config_pwm_t *chConfig = (rx_config_pwm_t *)config.GetPwmChannel(ch);
                         rx_config_pwm_t ncfg;
                         memcpy(&ncfg, chConfig, sizeof(rx_config_pwm_t));
-                        config.SetPwmChannel(ch, chConfig->val.failsafe, chConfig->val.inputChannel, chConfig->val.inverted, req_data.delay == 0 ? somDShot : somDShot3D, false);
-                        ncfg.val.mode = req_data.delay == 0 ? somDShot : somDShot3D;
+                        auto newMode = req_data.delay == 0 ? somDShot : somDShot3D;
+#ifdef BUILD_SHREW_SLOW_DSHOT
+                        const auto oldMode = (eServoOutputMode)chConfig->val.mode;
+                        if (oldMode >= somDshotSlow && oldMode <= somDshotSlow16_3D)
+                            newMode = (eServoOutputMode)(somDshotSlow + ((oldMode - somDshotSlow) & ~1) + (req_data.delay != 0));
+#endif
+                        config.SetPwmChannel(ch, chConfig->val.failsafe, chConfig->val.inputChannel, chConfig->val.inverted, newMode, false);
+                        ncfg.val.mode = newMode;
                         memcpy(chConfig, &ncfg, sizeof(rx_config_pwm_t));
                         config.Commit();
                         default_response = true;

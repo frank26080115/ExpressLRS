@@ -100,6 +100,21 @@ uint16_t servoOutputModeToFrequency(eServoOutputMode mode)
     }
 }
 
+#if defined(PLATFORM_ESP32)
+static dshot_mode_t servoDshotMode(eServoOutputMode mode, dshot_mode_t normal)
+{
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    switch (mode) {
+        case somDshotSlow: case somDshotSlow3D: return DSHOT4;
+        case somDshotSlow8: case somDshotSlow8_3D: return DSHOT8;
+        case somDshotSlow16: case somDshotSlow16_3D: return DSHOT16;
+        default: break;
+    }
+#endif
+    return normal;
+}
+#endif
+
 static void servoWriteDshot(eServoOutputMode chMode, uint8_t ch, uint16_t us)
 {
 #if defined(PLATFORM_ESP32)
@@ -112,7 +127,7 @@ static void servoWriteDshot(eServoOutputMode chMode, uint8_t ch, uint16_t us)
     {
         uint16_t dshotVal;
         us = constrain(us, 1000, 2000);
-        if (chMode == somDShot)
+        if (!servoOutputModeIsDshot3D(chMode))
         {
             if (us == 1000) { // stopped
                 dshotVal = DSHOT_CMD_MOTOR_STOP;
@@ -147,7 +162,7 @@ static void servoWrite(uint8_t ch, uint16_t us)
 {
     const rx_config_pwm_t *chConfig = config.GetPwmChannel(ch);
     const eServoOutputMode chMode = (eServoOutputMode)chConfig->val.mode;
-    if (chMode == somDShot || chMode == somDShot3D)
+    if (servoOutputModeIsDshot(chMode))
     {
         servoWriteDshot(chMode, ch, us);
     }
@@ -303,6 +318,12 @@ void servosUpdate(unsigned long now)
     // for ESP32-C3's implementation of DShotRMT, there's extra tasks to take care of even if no update is needed
     DShotRMT::poll();
     #endif
+#if defined(PLATFORM_ESP32) && !defined(PLATFORM_ESP32_C3) && defined(BUILD_SHREW_SLOW_DSHOT)
+    for (auto instance : dshotInstances) {
+        if (instance != nullptr) instance->poll();
+    }
+#endif
+
 
     if (newChannelsAvailable)
     {
@@ -367,12 +388,12 @@ void servo_initializeAll()
 #endif
         // Mark servo pins that are being used for serial (or other purposes) as disconnected
         auto mode = (eServoOutputMode)config.GetPwmChannel(ch)->val.mode;
-        if (mode >= somSerial)
+        if (mode >= somSerial && !servoOutputModeIsDshot(mode))
         {
             pin = UNDEF_PIN;
         }
 #if defined(PLATFORM_ESP32)
-        else if (mode == somDShot || mode == somDShot3D)
+        else if (servoOutputModeIsDshot(mode))
         {
             if (rmtCH < RMT_MAX_CHANNELS)
             {
@@ -429,9 +450,9 @@ void servo_initializeEnable()
 #endif
         }
 #if defined(PLATFORM_ESP32)
-        else if ((eServoOutputMode)chConfig->val.mode == somDShot || (eServoOutputMode)chConfig->val.mode == somDShot3D)
+        else if (servoOutputModeIsDshot((eServoOutputMode)chConfig->val.mode))
         {
-            dshotInstances[ch]->begin(DSHOT300, false); // Set DShot protocol and bidirectional dshot bool
+            dshotInstances[ch]->begin(servoDshotMode((eServoOutputMode)chConfig->val.mode, DSHOT300), false); // Set DShot protocol and bidirectional dshot bool
         }
 #endif
     }
@@ -545,12 +566,12 @@ bool servos_singleInit(int selected_pin)
 #endif
         // Mark servo pins that are being used for serial (or other purposes) as disconnected
         auto mode = (eServoOutputMode)chConfig->val.mode;
-        if (mode >= somSerial)
+        if (mode >= somSerial && !servoOutputModeIsDshot(mode))
         {
             pin = UNDEF_PIN;
         }
 #if defined(PLATFORM_ESP32)
-        else if (mode == somDShot || mode == somDShot3D)
+        else if (servoOutputModeIsDshot(mode))
         {
             if (rmtCH < RMT_MAX_CHANNELS)
             {
@@ -559,7 +580,7 @@ bool servos_singleInit(int selected_pin)
                 DBGLN("Initializing DShot: gpio: %u, ch: %d, rmtChannel: %u", gpio, ch, rmtChannel);
                 pinMode(pin, OUTPUT);
                 dshotInstances[ch] = new DShotRMT(gpio, rmtChannel); // Initialize the DShotRMT instance
-                dshotInstances[ch]->begin(DSHOT600, false);
+                dshotInstances[ch]->begin(servoDshotMode(mode, DSHOT600), false);
                 servoWrite(ch, 0);
                 res = true;
                 rmtCH++;

@@ -30,7 +30,7 @@ char strPowerLevels[] = "10;25;50;100;250;500;1000;2000;MatchTX ";
 char strPowerLevels[] = "10;25;50;100;250;500;1000;2000;MatchTX ";
 #endif
 static char modelString[] = "000";
-static char pwmModes[] = "50Hz;60Hz;100Hz;160Hz;333Hz;400Hz;10kHzDuty;On/Off;DShot;DShot 3D;Serial RX;Serial TX;I2C SCL;I2C SDA;Serial2 RX;Serial2 TX";
+static char pwmModes[320] = "50Hz;60Hz;100Hz;160Hz;333Hz;400Hz;10kHzDuty;On/Off;DShot;DShot 3D;Serial RX;Serial TX;I2C SCL;I2C SDA;Serial2 RX;Serial2 TX";
 
 static selectionParameter luaSerialProtocol = {
     {"Protocol", CRSF_TEXT_SELECTION},
@@ -362,6 +362,11 @@ void RXEndpoint::luaparamMappingChannelOut(propertiesCommon *item, uint8_t arg)
         }
     }
     strcat(pwmModes, pModeString);
+#endif
+
+#if defined(BUILD_SHREW_SLOW_DSHOT) && defined(PLATFORM_ESP32)
+    strcat(pwmModes, GPIO_PIN_PWM_OUTPUTS[arg-1] != 0
+        ? ";DShot4;DShot4 3D;DShot8;DShot8 3D;DShot16;DShot16 3D" : ";;;;;;");
 #endif
 
     // trim off trailing semicolons (assumes pwmModes has at least 1 non-semicolon)

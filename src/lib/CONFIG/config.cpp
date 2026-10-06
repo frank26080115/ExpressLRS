@@ -892,6 +892,22 @@ void RxConfig::Load()
         return;
     }
 
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    // V13 widens PWM mode without changing the size of any stored structure.
+    // V12 stores stretched/narrow/failsafeMode at bits 20..23; V13 at 22..25.
+    if (version == 12)
+    {
+        for (unsigned ch = 0; ch < PWM_MAX_CHANNELS; ++ch) {
+            const uint32_t raw = m_config.pwmChannels[ch].raw;
+            m_config.pwmChannels[ch].raw = (raw & 0x000FFFFFU) | ((raw & 0x00F00000U) << 2);
+        }
+        m_config.version = RX_CONFIG_VERSION | RX_CONFIG_MAGIC;
+        version = RX_CONFIG_VERSION;
+        m_modified = EVENT_CONFIG_PWM_CHANGE;
+        Commit();
+    }
+#endif
+
     // If version is current, all done
     if (version == RX_CONFIG_VERSION)
     {

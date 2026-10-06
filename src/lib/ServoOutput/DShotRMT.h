@@ -64,7 +64,35 @@ typedef enum dshot_mode_e {
 	DSHOT300,
 	DSHOT600,
 	DSHOT1200
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    , DSHOT4, DSHOT8, DSHOT16
+#endif
 } dshot_mode_t;
+
+#ifdef BUILD_SHREW_SLOW_DSHOT
+// Slow modes use a 50 ns RMT tick: all five-sample bit periods are exact.
+// Center the high pulse at 1.5 samples (zero) or 3.5 samples (one).
+inline bool dshotIsSlow(dshot_mode_t mode)
+{
+    return mode == DSHOT4 || mode == DSHOT8 || mode == DSHOT16;
+}
+inline uint16_t dshotSlowBitTicks(dshot_mode_t mode)
+{
+    return mode == DSHOT4 ? 5100 : mode == DSHOT8 ? 2550 : 1275;
+}
+inline uint16_t dshotSlowZeroTicks(dshot_mode_t mode)
+{
+    return mode == DSHOT4 ? 1530 : mode == DSHOT8 ? 765 : 383;
+}
+inline uint16_t dshotSlowOneTicks(dshot_mode_t mode)
+{
+    return mode == DSHOT4 ? 3570 : mode == DSHOT8 ? 1785 : 893;
+}
+inline uint32_t dshotSlowFrameUs(dshot_mode_t mode)
+{
+    return (17U * dshotSlowBitTicks(mode) + 19) / 20;
+}
+#endif
 
 typedef enum telemetric_request_e {
 	NO_TELEMETRIC,
@@ -98,6 +126,9 @@ public:
 	// ...safety first ...no parameters, no DShot
 	bool begin(dshot_mode_t dshot_mode = DSHOT_OFF, bool is_bidirectional = false);
 	void set_looping(bool);
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    void poll();
+#endif
 	void send_dshot_value(uint16_t throttle_value, telemetric_request_t telemetric_request = NO_TELEMETRIC);
 
 private:
@@ -107,6 +138,13 @@ private:
 
 	dshot_mode_t mode = DSHOT_OFF;
 	bool bidirectional = false;
+#ifdef BUILD_SHREW_SLOW_DSHOT
+    dshot_packet_t pending_packet{};
+    uint32_t last_send_time = 0;
+    bool has_pending_packet = false;
+    bool has_sent_packet = false;
+    bool slow_looping = true;
+#endif
 	uint16_t ticks_zero_high = 0;
 	uint16_t ticks_zero_low = 0;
 	uint16_t ticks_one_high = 0;

@@ -128,7 +128,7 @@ class SerialPanel extends LitElement {
             return elrsState.config['serial1-protocol'] !== undefined
         }
         for(const pwm of elrsState.config.pwm) {
-            const mode = (pwm.config >> 16) & 15
+            const mode = (pwm.config >> 16) & ((pwm.features & 128) ? 63 : 15)
             if (mode === PWM_MODE_SERIAL2RX || mode === PWM_MODE_SERIAL2TX)
                 return true
         }

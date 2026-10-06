@@ -493,6 +493,9 @@ static void GetConfiguration(AsyncWebServerRequest *request)
       channel["config"] = config.GetPwmChannel(ch)->raw;
       channel["pin"] = GPIO_PIN_PWM_OUTPUTS[ch];
       uint8_t features = 0;
+#ifdef BUILD_SHREW_SLOW_DSHOT
+      features |= 128; // Six-bit mode layout; slow DShot options require bit 16 too.
+#endif
       auto pin = GPIO_PIN_PWM_OUTPUTS[ch];
       if (pin == U0TXD_GPIO_NUM) features |= 1;  // SerialTX supported
       else if (pin == U0RXD_GPIO_NUM) features |= 2;  // SerialRX supported

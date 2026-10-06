@@ -19,7 +19,11 @@
 #define RX_CONFIG_MAGIC     (0b10U << 30)
 
 #define TX_CONFIG_VERSION   8U
+#ifdef BUILD_SHREW_SLOW_DSHOT
+#define RX_CONFIG_VERSION   13U
+#else
 #define RX_CONFIG_VERSION   12U
+#endif
 #define FIRMWARE_TRAILER_SIZE 4096U
 
 class BindphraseConfigurable
@@ -233,11 +237,19 @@ typedef union {
         uint32_t failsafe:11,    // us output during failsafe +476 (e.g. 1024 here would be 1500us)
                  inputChannel:4, // 0-based input channel
                  inverted:1,     // invert channel output
+#ifdef BUILD_SHREW_SLOW_DSHOT
+                 mode:6,         // Output mode (eServoOutputMode)
+#else
                  mode:4,         // Output mode (eServoOutputMode)
+#endif
                  stretched:1,    // expand the channel input to 500us - 2500us
                  narrow:1,       // Narrow output mode (half pulse width)
                  failsafeMode:2, // failsafe output mode (eServoOutputFailsafeMode)
+#ifdef BUILD_SHREW_SLOW_DSHOT
+                 unused:6;
+#else
                  unused:8;       // FUTURE: When someone complains "everyone" uses inverted polarity PWM or something :/
+#endif
     } val;
     uint32_t raw;
 } rx_config_pwm_t;
