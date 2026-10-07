@@ -198,7 +198,7 @@ class ConnectionsPanel extends LitElement {
             modes.push(features & 32 ? 'Serial2 RX' : undefined)
             modes.push(features & 64 ? 'Serial2 TX' : undefined)
             if (slowDshot && (features & 16)) {
-                modes.push('DShot4', 'DShot4-3D', 'DShot8', 'DShot8-3D', 'DShot16', 'DShot16-3D')
+                modes.push('DShot4', 'DShot4-3D')
             }
 
             htmlFields.push(html`

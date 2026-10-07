@@ -209,12 +209,8 @@ enum eServoOutputMode : uint8_t
     somSerial1RX,   // 14: secondary Serial RX
     somSerial1TX,   // 15: secondary Serial TX
 #ifdef BUILD_SHREW_SLOW_DSHOT
-    somDshotSlow,       // 16: DShot4, sampled by the ESC at 19.608 kHz
+    somDshotSlow,       // 16: DShot4, sampled by the ESC at 20 kHz
     somDshotSlow3D,     // 17: DShot4 with reversible throttle mapping
-    somDshotSlow8,      // 18: DShot8, sampled at 39.216 kHz
-    somDshotSlow8_3D,   // 19: DShot8 with reversible throttle mapping
-    somDshotSlow16,     // 20: DShot16, sampled at 78.431 kHz
-    somDshotSlow16_3D,  // 21: DShot16 with reversible throttle mapping
 #endif
 };
 
@@ -222,7 +218,7 @@ inline bool servoOutputModeIsDshot(eServoOutputMode mode)
 {
     return mode == somDShot || mode == somDShot3D
 #ifdef BUILD_SHREW_SLOW_DSHOT
-        || (mode >= somDshotSlow && mode <= somDshotSlow16_3D)
+        || (mode == somDshotSlow || mode == somDshotSlow3D)
 #endif
         ;
 }
@@ -231,7 +227,7 @@ inline bool servoOutputModeIsDshot3D(eServoOutputMode mode)
 {
     return mode == somDShot3D
 #ifdef BUILD_SHREW_SLOW_DSHOT
-        || mode == somDshotSlow3D || mode == somDshotSlow8_3D || mode == somDshotSlow16_3D
+        || mode == somDshotSlow3D
 #endif
         ;
 }

@@ -366,7 +366,7 @@ void RXEndpoint::luaparamMappingChannelOut(propertiesCommon *item, uint8_t arg)
 
 #if defined(BUILD_SHREW_SLOW_DSHOT) && defined(PLATFORM_ESP32)
     strcat(pwmModes, GPIO_PIN_PWM_OUTPUTS[arg-1] != 0
-        ? ";DShot4;DShot4 3D;DShot8;DShot8 3D;DShot16;DShot16 3D" : ";;;;;;");
+        ? ";DShot4;DShot4 3D" : ";;");
 #endif
 
     // trim off trailing semicolons (assumes pwmModes has at least 1 non-semicolon)

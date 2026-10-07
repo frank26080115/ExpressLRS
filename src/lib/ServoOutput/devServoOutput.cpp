@@ -106,8 +106,6 @@ static dshot_mode_t servoDshotMode(eServoOutputMode mode, dshot_mode_t normal)
 #ifdef BUILD_SHREW_SLOW_DSHOT
     switch (mode) {
         case somDshotSlow: case somDshotSlow3D: return DSHOT4;
-        case somDshotSlow8: case somDshotSlow8_3D: return DSHOT8;
-        case somDshotSlow16: case somDshotSlow16_3D: return DSHOT16;
         default: break;
     }
 #endif

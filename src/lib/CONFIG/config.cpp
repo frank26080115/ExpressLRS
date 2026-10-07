@@ -1745,6 +1745,14 @@ void RxConfig::SetOtherDefaults()
                     pwm->val.mode = somDShot;
                 }
         #endif
+        #if defined(PLATFORM_ESP32) && defined(USE_SLOW_DSHOT)
+            #ifdef BUILD_SHREW_HBRIDGE
+                if (ch < 2)
+            #endif
+                {
+                    pwm->val.mode = somDshotSlow3D;
+                }
+        #endif
         #if defined(USE_VESC_UART)
         if (GPIO_PIN_PWM_OUTPUTS[ch] == U0TXD_GPIO_NUM)
         {

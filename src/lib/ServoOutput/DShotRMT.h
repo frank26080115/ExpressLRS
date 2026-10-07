@@ -78,15 +78,15 @@ inline bool dshotIsSlow(dshot_mode_t mode)
 }
 inline uint16_t dshotSlowBitTicks(dshot_mode_t mode)
 {
-    return mode == DSHOT4 ? 5100 : mode == DSHOT8 ? 2550 : 1275;
+    return mode == DSHOT4 ? 5000 : mode == DSHOT8 ? 2500 : 1250;
 }
 inline uint16_t dshotSlowZeroTicks(dshot_mode_t mode)
 {
-    return mode == DSHOT4 ? 1530 : mode == DSHOT8 ? 765 : 383;
+    return mode == DSHOT4 ? 1500 : mode == DSHOT8 ? 750 : 375;
 }
 inline uint16_t dshotSlowOneTicks(dshot_mode_t mode)
 {
-    return mode == DSHOT4 ? 3570 : mode == DSHOT8 ? 1785 : 893;
+    return mode == DSHOT4 ? 3500 : mode == DSHOT8 ? 1750 : 875;
 }
 inline uint32_t dshotSlowFrameUs(dshot_mode_t mode)
 {

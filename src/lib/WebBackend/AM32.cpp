@@ -336,8 +336,8 @@ void am32_handleIo(AsyncWebServerRequest *request)
                         auto newMode = req_data.delay == 0 ? somDShot : somDShot3D;
 #ifdef BUILD_SHREW_SLOW_DSHOT
                         const auto oldMode = (eServoOutputMode)chConfig->val.mode;
-                        if (oldMode >= somDshotSlow && oldMode <= somDshotSlow16_3D)
-                            newMode = (eServoOutputMode)(somDshotSlow + ((oldMode - somDshotSlow) & ~1) + (req_data.delay != 0));
+                        if (oldMode == somDshotSlow || oldMode == somDshotSlow3D)
+                            newMode = req_data.delay == 0 ? somDshotSlow : somDshotSlow3D;
 #endif
                         config.SetPwmChannel(ch, chConfig->val.failsafe, chConfig->val.inputChannel, chConfig->val.inverted, newMode, false);
                         ncfg.val.mode = newMode;
