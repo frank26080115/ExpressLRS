@@ -66,11 +66,11 @@ void hwTimer::updateInterval(uint32_t newTimerInterval)
 
 void ICACHE_RAM_ATTR hwTimer::phaseShift(int32_t newPhaseShift)
 {
-    int32_t minVal = -(HWtimerInterval >> 2);
-    int32_t maxVal = (HWtimerInterval >> 2);
+    const int32_t ticksPerUs = HWTIMER_TICKS_PER_US * HWTIMER_PRESCALER;
+    const int32_t maxPhaseShiftUs = HWtimerInterval / ticksPerUs / 4;
 
-    // phase shift is in microseconds
-    PhaseShift = constrain(newPhaseShift, minVal, maxVal) * (HWTIMER_TICKS_PER_US * HWTIMER_PRESCALER);
+    // Clamp in microseconds before converting to ticks, keeping the next half-period positive.
+    PhaseShift = constrain(newPhaseShift, -maxPhaseShiftUs, maxPhaseShiftUs) * ticksPerUs;
 }
 
 void ICACHE_RAM_ATTR hwTimer::callback()
