@@ -139,8 +139,6 @@ export class Am32Panel extends LitElement {
                         <div style="display:inline-block; vertical-align:top;">
                             <div style="display: table;">
                                 <div style="display: table-row-group;" id="tbl_sliders"></div>
-                            </div>
-                            <div style="display: table;">
                                 <div style="display: table-row-group;" id="tbl_sliders_219"></div>
                             </div>
                         </div>
