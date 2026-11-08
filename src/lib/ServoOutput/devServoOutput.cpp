@@ -17,6 +17,10 @@
 #include "waveform_8266.h"
 #endif
 
+#if defined(PLATFORM_ESP32)
+#include <driver/periph_ctrl.h>
+#endif
+
 static int8_t servoPins[PWM_MAX_CHANNELS];
 static pwm_channel_t pwmChannels[PWM_MAX_CHANNELS];
 static uint16_t pwmChannelValues[PWM_MAX_CHANNELS];
@@ -60,9 +64,11 @@ static bool servoInitializePwmOneShot(uint8_t ch, uint8_t pin, uint16_t frequenc
 #endif
 
 // true when the RX has a new channels packet
-static bool newChannelsAvailable;
+static volatile bool newChannelsAvailable;
+static uint32_t lastUpdate;
 // Absolute max failsafe time if no update is received, regardless of LQ
 static constexpr uint32_t FAILSAFE_ABS_TIMEOUT_MS = 1000U;
+static constexpr uint32_t DISCONNECTED_UPDATE_MS = 10;
 
 bool servo_initialized = false;
 void servo_initializeEnable();
@@ -205,6 +211,18 @@ void servosFailsafe(bool no_pulse)
     }
 }
 
+static void servosEnterFailsafe(bool no_pulse = false)
+{
+    newChannelsAvailable = false;
+    lastUpdate = 0;
+
+    // A connection state change must not allocate outputs that have never been started.
+    if (servo_initialized)
+    {
+        servosFailsafe(no_pulse);
+    }
+}
+
 static void servoCalcAllChannels(servoWrite_fn write)
 {
     #ifdef BUILD_SERVOS_MOVE_BLINK
@@ -272,37 +290,58 @@ void servoCurrentToFailsafeConfig()
     servoCalcAllChannels(&servoUsToFailsafeConfig);
 }
 
+static void servoServiceOutputs(bool controlsActive)
+{
+#if defined(PLATFORM_ESP8266) && defined(BUILD_SHREW_PWM_ONESHOT)
+    // Keep configured failsafe outputs supplied with pulses while servicing continues.
+    if (servo_initialized)
+    {
+        for (int ch = 0; ch < GPIO_PIN_PWM_OUTPUTS_COUNT; ++ch)
+        {
+            if (pwmChannels[ch] != -1 && servoPins[ch] != UNDEF_PIN)
+            {
+                const rx_config_pwm_t *chConfig = config.GetPwmChannel(ch);
+                const uint16_t frequency = servoOutputModeToFrequency((eServoOutputMode)chConfig->val.mode);
+                const bool noPulseFailsafe = chConfig->val.failsafeMode == PWMFAILSAFE_NO_PULSES;
+                if (frequency && frequency != 10000U && (!noPulseFailsafe || controlsActive))
+                {
+                    refreshWaveformOneShot8266(servoPins[ch], (frequency + 9U) / 10U);
+                }
+            }
+        }
+    }
+#endif
+#if defined(PLATFORM_ESP32_C3)
+    // Failsafe DShot commands are queued too, so service them after applying failsafe.
+    DShotRMT::poll();
+#endif
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+    PwmOneShot::poll(controlsActive);
+#else
+    (void)controlsActive;
+#endif
+}
+
 void servosUpdate(unsigned long now)
 {
-    static uint32_t lastUpdate;
+    PWM.feedWatchdog();
+
+    // Browser control supplies channel updates while the RF link is stopped.
+    const bool webControlActive = connectionState == wifiUpdate && webbe_installed && webbe_ws_started;
+    const bool controlsActive = webControlActive ||
+        (connectionState == connected && connectionHasModelMatch && teamraceHasModelMatch);
+    if (!controlsActive)
+    {
+        servosEnterFailsafe();
+        servoServiceOutputs(false);
+        return;
+    }
 
     if (!servo_initialized) {
         // we might be running the servos from another place in the code
         servo_initialized = true;
         servo_initializeEnable();
     }
-
-#if defined(PLATFORM_ESP8266) && defined(BUILD_SHREW_PWM_ONESHOT)
-    // Feed active outputs for 100 ms; no-pulse failsafe outputs stop when the RF link is down.
-    for (int ch = 0; ch < GPIO_PIN_PWM_OUTPUTS_COUNT; ++ch)
-    {
-        if (pwmChannels[ch] != -1 && servoPins[ch] != UNDEF_PIN)
-        {
-            const rx_config_pwm_t *chConfig = config.GetPwmChannel(ch);
-            const uint16_t frequency = servoOutputModeToFrequency((eServoOutputMode)chConfig->val.mode);
-            const bool noPulseFailsafe = chConfig->val.failsafeMode == PWMFAILSAFE_NO_PULSES;
-            if (frequency && frequency != 10000U && (!noPulseFailsafe || connectionState == connected))
-            {
-                refreshWaveformOneShot8266(servoPins[ch], (frequency + 9U) / 10U);
-            }
-        }
-    }
-#endif
-
-    #if defined(PLATFORM_ESP32_C3)
-    // for ESP32-C3's implementation of DShotRMT, there's extra tasks to take care of even if no update is needed
-    DShotRMT::poll();
-    #endif
 
     if (newChannelsAvailable)
     {
@@ -329,9 +368,7 @@ void servosUpdate(unsigned long now)
         servosFailsafe(connectionState == wifiUpdate && !webbe_ws_started);
         lastUpdate = 0;
     }
-#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
-    PwmOneShot::poll(connectionState == connected);
-#endif
+    servoServiceOutputs(true);
 }
 
 void servo_initializeAll()
@@ -472,27 +509,23 @@ static bool initialize()
 
 static int event()
 {
-    if (connectionState == disconnected)
-    {
-#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
-        // Failsafe positions still need servosUpdate to poll their RMT pulses.
-        return DURATION_IMMEDIATELY;
-#else
-        // Disconnected should come after failsafe on the RX.
-        return DURATION_NEVER;
-#endif
-    }
     if (connectionState == wifiUpdate)
     {
-        //servo_shutdown();
-        servosFailsafe(!webbe_installed || !webbe_ws_started);
+        servosEnterFailsafe(!webbe_installed || !webbe_ws_started);
+        return DURATION_NEVER;
+    }
+    if (connectionState != connected)
+    {
+        servosEnterFailsafe();
 #if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
+        // RMT one-shot failsafe positions must retain their configured pulse frequency.
         return DURATION_IMMEDIATELY;
 #else
-        return DURATION_NEVER;
+        // Keep feeding the ESP8266 waveform watchdog while in failsafe.
+        return connectionState == disconnected ? DISCONNECTED_UPDATE_MS : DURATION_IMMEDIATELY;
 #endif
     }
-    if (!servo_initialized && connectionState == connected)
+    if (!servo_initialized)
     {
         servo_initialized = true;
         servo_initializeEnable();
@@ -632,8 +665,29 @@ void servos_deinitAll()
 static int timeout()
 {
     servosUpdate(millis());
+#if defined(PLATFORM_ESP32) && defined(BUILD_SHREW_PWM_ONESHOT)
     return DURATION_IMMEDIATELY;
+#else
+    // When disconnected, keep feeding the ISR watchdog for configured failsafe PWM.
+    return connectionState == disconnected ? DISCONNECTED_UPDATE_MS : DURATION_IMMEDIATELY;
+#endif
 }
+
+#if defined(PLATFORM_ESP32)
+// High priority constructor function to reset the hardware modules used for PWM/DShot output.
+// Restarts can leave PWM/RMT peripherals running; so reset them early in the app start process.
+__attribute__((constructor(101))) void resetEsp32PwmDevices()
+{
+    periph_module_reset(PERIPH_LEDC_MODULE);
+    periph_module_reset(PERIPH_RMT_MODULE);
+#if SOC_MCPWM_SUPPORTED
+    periph_module_reset(PERIPH_PWM0_MODULE);
+#if SOC_MCPWM_GROUPS > 1
+    periph_module_reset(PERIPH_PWM1_MODULE);
+#endif
+#endif
+}
+#endif
 
 device_t ServoOut_device = {
     .initialize = initialize,

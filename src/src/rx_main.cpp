@@ -764,6 +764,10 @@ static void ICACHE_RAM_ATTR updateDiversity()
             antenna = config.GetAntennaMode();
         }
     }
+    if (GPIO_PIN_ANT_GROUP != UNDEF_PIN)
+    {
+        digitalWrite(GPIO_PIN_ANT_GROUP, config.GetAntennaGroup());
+    }
 }
 
 void ICACHE_RAM_ATTR HWtimerCallbackTock()
@@ -826,12 +830,24 @@ void LostConnection(bool resumeRx)
     LPF_Offset.init(0);
     LPF_OffsetDx.init(0);
     alreadyTLMresp = false;
+    OtaResetChannelDataComplete();
 
     if (!InBindingMode)
     {
         if (hwTimer::running)
         {
-            while(micros() - PFDloop.getIntEventTime() > 250); // time it just after the tock()
+            // Prefer stopping just after a tock, but recover if the timer stops advancing.
+            const uint32_t waitTimeoutUs = 2U * ExpressLRS_currAirRate_Modparams->interval;
+            const uint32_t waitStartUs = micros();
+            while (hwTimer::running)
+            {
+                const uint32_t lastTockUs = PFDloop.getIntEventTime();
+                const uint32_t nowUs = micros();
+                if (nowUs - lastTockUs <= 250U || nowUs - waitStartUs >= waitTimeoutUs)
+                {
+                    break;
+                }
+            }
             hwTimer::stop();
         }
         SetRFLinkRate(ExpressLRS_nextAirRateIndex, false); // also sets to initialFreq
@@ -848,6 +864,8 @@ void ICACHE_RAM_ATTR TentativeConnection(unsigned long now)
     PFDloop.reset();
     setConnectionState(tentative);
     connectionHasModelMatch = false;
+    ChannelDataReset();
+    OtaResetChannelDataComplete();
     RXtimerState = tim_disconnected;
     DBGLN("tentative conn");
     PfdPrevRawOffset = 0;
@@ -901,8 +919,10 @@ static void ICACHE_RAM_ATTR ProcessRfPacket_RC(OTA_Packet_s const * const otaPkt
     custommixer_mix();
     DataDlSender.ConfirmCurrentPayload(telemetryConfirmValue);
 
+    bool const channelDataComplete = OtaIsChannelDataComplete(ChannelData);
+
     // No channels packets to the FC or PWM pins if no model match
-    if (connectionHasModelMatch)
+    if (connectionHasModelMatch && channelDataComplete)
     {
         if (ExpressLRS_currAirRate_Modparams->numOfSends == 1)
         {
@@ -1605,6 +1625,11 @@ static void setupTarget()
         pinMode(GPIO_PIN_ANT_CTRL, OUTPUT);
         digitalWrite(GPIO_PIN_ANT_CTRL, LOW);
     }
+    if (GPIO_PIN_ANT_GROUP != UNDEF_PIN)
+    {
+        pinMode(GPIO_PIN_ANT_GROUP, OUTPUT);
+        digitalWrite(GPIO_PIN_ANT_GROUP, LOW);
+    }
 
     setupTargetCommon();
 }
@@ -1777,8 +1802,7 @@ static void ExitBindingMode()
     LockRFmode = false;
     LostConnection(false);
 
-    // Do this last as LostConnection() will wait for a tock that never comes
-    // if we're in binding mode
+    // Keep binding mode set so LostConnection() skips timer shutdown and RF reconfiguration.
     InBindingMode = false;
     DBGLN("Exiting binding mode");
     devicesTriggerEvent(EVENT_EXIT_BIND_MODE);
@@ -1999,6 +2023,8 @@ static void updateSwitchMode()
         return;
 
     OtaUpdateSerializers((OtaSwitchMode_e)(SwitchModePending - 1), ExpressLRS_currAirRate_Modparams->PayloadLength);
+    ChannelDataReset();
+    OtaResetChannelDataComplete();
     SwitchModePending = 0;
 }
 

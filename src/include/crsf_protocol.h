@@ -56,6 +56,7 @@
 typedef enum : uint8_t
 {
     CRSF_FRAMETYPE_GPS = 0x02,
+    CRSF_FRAMETYPE_GPS_TIME = 0x03,
     CRSF_FRAMETYPE_VARIO = 0x07,
     CRSF_FRAMETYPE_BATTERY_SENSOR = 0x08,
     CRSF_FRAMETYPE_BARO_ALTITUDE = 0x09,
@@ -149,8 +150,7 @@ typedef enum : uint8_t
 
 // These flags are or'ed with the field type above to hide the field from the normal LUA view
 #define CRSF_FIELD_HIDDEN       0x80     // marked as hidden in all LUA responses
-#define CRSF_FIELD_ELRS_HIDDEN  0x40     // marked as hidden when talking to ELRS specific LUA
-#define CRSF_FIELD_TYPE_MASK    ~(CRSF_FIELD_HIDDEN|CRSF_FIELD_ELRS_HIDDEN)
+#define CRSF_FIELD_TYPE_MASK    ~(CRSF_FIELD_HIDDEN)
 
 /**
  * Define the shape of a standard header
@@ -339,6 +339,18 @@ typedef struct crsf_sensor_vario_s
     int16_t verticalspd;  // Vertical speed in cm/s, BigEndian
 } PACKED crsf_sensor_vario_t;
 
+// CRSF_FRAMETYPE_GPS_TIME
+typedef struct crsf_sensor_gps_time_s
+{
+    int16_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+    uint16_t millisecond;
+} PACKED crsf_sensor_gps_time_t;
+
 // CRSF_FRAMETYPE_GPS
 typedef struct crsf_sensor_gps_s
 {
@@ -505,21 +517,6 @@ static inline uint16_t htobe16(uint16_t val)
 #endif
 }
 
-static inline uint32_t htobe24(uint32_t val)
-{
-#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-    return val;
-#else
-    uint8_t *ptrByte = (uint8_t *)&val;
-
-    uint8_t swp = ptrByte[0];
-    ptrByte[0] = ptrByte[2];
-    ptrByte[2] = swp;
-
-    return val;
-#endif
-}
-
 static inline uint16_t be16toh(uint16_t val)
 {
 #if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
@@ -535,6 +532,15 @@ static inline uint32_t htobe32(uint32_t val)
     return val;
 #else
     return __builtin_bswap32(val);
+#endif
+}
+
+static inline uint32_t htobe24(uint32_t val)
+{
+#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    return val;
+#else
+    return __builtin_bswap32(val) >> 8;
 #endif
 }
 

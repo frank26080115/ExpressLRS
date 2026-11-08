@@ -52,18 +52,14 @@ def compressFirmware(source, target, env):
         target_file = source_file + ".gz"
         binary_compress(target_file, source_file)
 
-        platform = env.get('PIOPLATFORM', '').lower()
         is_esp8285 = 'ESP8285' in env.get('PIOENV', '').upper() or env.get('BOARD', '') == 'esp8285-8285'
-
         if is_esp8285:
             estimated_max = 410000
             compressed_size = os.stat(target_file).st_size
             print("Compressed firmware uses {:.1f}% of estimated max {} bytes ({} bytes)".format(
                 (compressed_size / estimated_max) * 100, estimated_max, compressed_size))
 
-        if not is_esp8285:
-            os.remove(source_file)
-            os.rename(target_file, source_file)
+        os.remove(source_file)
 
 
 def compress_files(source, target, env):

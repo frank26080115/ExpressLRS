@@ -181,11 +181,20 @@ const HARDWARE_SCHEMA = [
         title: 'Radio Antenna', rows: [
             {
                 id: 'ant_ctrl',
-                label: 'CTRL pin',
+                label: 'Antenna select pin',
                 type: 'uint',
                 icon: 'output',
-                desc: 'Pin connected to Antenna select pin on power amplifier'
+                desc: 'Pin connected to Antenna select pin on power amplifier or switch'
             },
+            /* FEATURE: NOT IS_TX */
+            {
+                id: 'ant_group',
+                label: 'Antenna group pin',
+                type: 'uint',
+                icon: 'output',
+                desc: 'Secondary pin connected to an antenna switch, used to select from internal/external antenna port(s) via Lua'
+            },
+            /* /FEATURE: NOT IS_TX */
         ]
     },
 
@@ -521,16 +530,23 @@ const HARDWARE_SCHEMA = [
                 label: 'Screen type',
                 type: 'select',
                 options: [
-                    {value: 0, label: 'None'}, {value: 1, label: 'I2C OLED (SSD1306 128x64)'},
-                    {value: 2, label: 'SPI OLED (SSD1306 128x64)'}, {value: 3, label: 'SPI OLED (small SSD1306 128x32)'},
+                    {value: 0, label: 'None'},
+                    {value: 1, label: 'I2C OLED (SSD1306 128x64)'},
+                    {value: 2, label: 'SPI OLED (SSD1306 128x64)'},
                     {value: 4, label: 'SPI TFT (ST7735 160x80)'}
-                ], desc: 'Type of OLED connected'
+                ], desc: 'Type of display connected'
             },
             {
                 id: 'screen_reversed',
                 label: '180 rotation',
                 type: 'checkbox',
                 desc: 'Select to rotate the display 180 degrees'
+            },
+            {
+                id: 'screen_mirror',
+                label: 'Screen mirror',
+                type: 'checkbox',
+                desc: 'Mirror the display horizontally. Combine with "180 rotation" for vertical mirror. OLED only; no effect on SPI TFT screens.'
             },
             {
                 id: 'screen_cs',
@@ -709,11 +725,18 @@ const HARDWARE_SCHEMA = [
         title: 'PWM', rows: [
             {
                 id: 'pwm_outputs',
-                label: 'PWM output pins',
+                label: 'PWM pins',
                 type: 'array',
                 size: 40,
                 icon: 'pwm',
-                desc: 'Comma-separated list of pins used for PWM output'
+                desc: 'Comma-separated list of pins used for PWM (and other I/O features)'
+            },
+            {
+                id: 'pwm_out_only',
+                label: 'PWM pins are output-only',
+                type: 'checkbox',
+                icon: null,
+                desc: 'Enable this when the PWM pins are behind output-only buffers such as Schmitt triggers. Input or bidirectional functions like Serial and I2C will be disabled on PWM pins.'
             },
         ]
     },
@@ -754,6 +777,7 @@ const HARDWARE_SCHEMA = [
                 ],
                 desc: 'ADC pin attenuation (ESP32) and optional efuse-based calibration adjustment'
             },
+            /* /FEATURE: NOT IS_8285 */
             {
                 id: 'vbat_noreading',
                 label: 'VBat no-reading threshold',
@@ -775,6 +799,7 @@ const HARDWARE_SCHEMA = [
                 size: 7,
                 desc: 'Manufacturer-defined maximum supported source voltage in mV used by the calibration wizard'
             },
+            /* FEATURE: NOT IS_8285 */
             {
                 id: 'vsrc1',
                 label: 'VSrc1 pin',

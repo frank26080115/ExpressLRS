@@ -92,6 +92,13 @@ static selectionParameter luaAntennaMode = {
     STR_EMPTYSPACE
 };
 
+static selectionParameter luaAntennaGroup = {
+    {"Ant. Group", CRSF_TEXT_SELECTION},
+    0, // value
+    "External;Builtin",
+    STR_EMPTYSPACE
+};
+
 static folderParameter luaTeamraceFolder = {
     {"Team Race", CRSF_FOLDER},
 };
@@ -194,6 +201,11 @@ static commandParameter luaBindMode = {
     STR_EMPTYSPACE
 };
 
+static uint8_t sanitizePwmMode(uint8_t mode)
+{
+    return OPT_PWM_OUT_ONLY && mode >= somSerial ? som50Hz : mode;
+}
+
 void RXEndpoint::luaparamMappingChannelOut(propertiesCommon *item, uint8_t arg)
 {
     bool sclAssigned = false;
@@ -265,11 +277,11 @@ void RXEndpoint::luaparamMappingChannelOut(propertiesCommon *item, uint8_t arg)
 
     // SerialIO outputs (1 option)
     // ;[Serial RX] | [Serial TX]
-    if (GPIO_PIN_PWM_OUTPUTS[arg-1] == U0RXD_GPIO_NUM)
+    if (!OPT_PWM_OUT_ONLY && GPIO_PIN_PWM_OUTPUTS[arg-1] == U0RXD_GPIO_NUM)
     {
         pModeString = serial_RX;
     }
-    else if (GPIO_PIN_PWM_OUTPUTS[arg-1] == U0TXD_GPIO_NUM)
+    else if (!OPT_PWM_OUT_ONLY && GPIO_PIN_PWM_OUTPUTS[arg-1] == U0TXD_GPIO_NUM)
     {
         pModeString = serial_TX;
     }
@@ -281,7 +293,7 @@ void RXEndpoint::luaparamMappingChannelOut(propertiesCommon *item, uint8_t arg)
 
     // I2C pins (2 options)
     // ;[I2C SCL] ;[I2C SDA]
-    if (GPIO_PIN_SCL != UNDEF_PIN || GPIO_PIN_SDA != UNDEF_PIN)
+    if (!OPT_PWM_OUT_ONLY && (GPIO_PIN_SCL != UNDEF_PIN || GPIO_PIN_SDA != UNDEF_PIN))
     {
         // If the target defines SCL/SDA then those pins MUST be used
         if (GPIO_PIN_PWM_OUTPUTS[arg-1] == GPIO_PIN_SCL)
@@ -297,7 +309,7 @@ void RXEndpoint::luaparamMappingChannelOut(propertiesCommon *item, uint8_t arg)
             pModeString = no2Options;
         }
     }
-    else
+    else if (!OPT_PWM_OUT_ONLY)
     {
         // otherwise allow any pin to be either SCL or SDA but only once
         if (sclAssigned && !sdaAssigned)
@@ -317,6 +329,10 @@ void RXEndpoint::luaparamMappingChannelOut(propertiesCommon *item, uint8_t arg)
             pModeString = no2Options;
         }
     }
+    else
+    {
+        pModeString = no2Options;
+    }
     strcat(pwmModes, pModeString);
 
     // nothing to do for unsupported somPwm mode
@@ -325,7 +341,7 @@ void RXEndpoint::luaparamMappingChannelOut(propertiesCommon *item, uint8_t arg)
 #if defined(PLATFORM_ESP32)
     // secondary Serial pins (2 options)
     // ;[SERIAL2 RX] ;[SERIAL2_TX]
-    if (GPIO_PIN_SERIAL1_RX != UNDEF_PIN || GPIO_PIN_SERIAL1_TX != UNDEF_PIN)
+    if (!OPT_PWM_OUT_ONLY && (GPIO_PIN_SERIAL1_RX != UNDEF_PIN || GPIO_PIN_SERIAL1_TX != UNDEF_PIN))
     {
         // If the target defines Serial2 RX/TX then those pins MUST be used
         if (GPIO_PIN_PWM_OUTPUTS[arg-1] == GPIO_PIN_SERIAL1_RX)
@@ -341,7 +357,7 @@ void RXEndpoint::luaparamMappingChannelOut(propertiesCommon *item, uint8_t arg)
             pModeString = no2Options;
         }
     }
-    else
+    else if (!OPT_PWM_OUT_ONLY)
     {   // otherwise allow any pin to be either RX or TX but only once
         if (serial1txAssigned && !serial1rxAssigned)
         {
@@ -361,6 +377,10 @@ void RXEndpoint::luaparamMappingChannelOut(propertiesCommon *item, uint8_t arg)
             pModeString = no2Options;
         }
     }
+    else
+    {
+        pModeString = no2Options;
+    }
     strcat(pwmModes, pModeString);
 #endif
 
@@ -373,7 +393,7 @@ void RXEndpoint::luaparamMappingChannelOut(propertiesCommon *item, uint8_t arg)
     // update the related fields to represent the selected channel
     const rx_config_pwm_t *pwmCh = config.GetPwmChannel(luaMappingChannelOut.properties.u.value - 1);
     setUint8Value(&luaMappingChannelIn, pwmCh->val.inputChannel + 1);
-    setTextSelectionValue(&luaMappingOutputMode, pwmCh->val.mode);
+    setTextSelectionValue(&luaMappingOutputMode, sanitizePwmMode(pwmCh->val.mode));
     setTextSelectionValue(&luaMappingInverted, pwmCh->val.inverted);
 }
 
@@ -428,7 +448,7 @@ static void luaparamMappingOutputMode(propertiesCommon *item, uint8_t arg)
   rx_config_pwm_t newPwmCh;
   newPwmCh.raw = config.GetPwmChannel(ch)->raw;
   uint8_t oldMode = newPwmCh.val.mode;
-  newPwmCh.val.mode = arg;
+  newPwmCh.val.mode = sanitizePwmMode(arg);
 
   // Check if pin == 1/3 and do other pin adjustment accordingly
   if (GPIO_PIN_PWM_OUTPUTS[ch] == 1)
@@ -535,6 +555,13 @@ void RXEndpoint::registerParameters()
     });
   }
 
+  if (GPIO_PIN_ANT_GROUP != UNDEF_PIN)
+  {
+    registerParameter(&luaAntennaGroup, [](propertiesCommon* item, uint8_t arg){
+      config.SetAntennaGroup(arg);
+    });
+  }
+
   if (POWERMGNT::getMinPower() != POWERMGNT::getMaxPower())
   {
     filterOptions(&luaTlmPower, POWERMGNT::getMinPower(), POWERMGNT::getMaxPower(), strPowerLevels);
@@ -606,6 +633,11 @@ void RXEndpoint::updateParameters()
     setTextSelectionValue(&luaAntennaMode, config.GetAntennaMode());
   }
 
+  if (GPIO_PIN_ANT_GROUP != UNDEF_PIN)
+  {
+    setTextSelectionValue(&luaAntennaGroup, config.GetAntennaGroup());
+  }
+
   if (MinPower != MaxPower)
   {
     // The last item (for MatchTX) will be MaxPower - MinPower + 1
@@ -621,7 +653,7 @@ void RXEndpoint::updateParameters()
   {
     const rx_config_pwm_t *pwmCh = config.GetPwmChannel(luaMappingChannelOut.properties.u.value - 1);
     setUint8Value(&luaMappingChannelIn, pwmCh->val.inputChannel + 1);
-    setTextSelectionValue(&luaMappingOutputMode, pwmCh->val.mode);
+    setTextSelectionValue(&luaMappingOutputMode, sanitizePwmMode(pwmCh->val.mode));
     setTextSelectionValue(&luaMappingInverted, pwmCh->val.inverted);
   }
 

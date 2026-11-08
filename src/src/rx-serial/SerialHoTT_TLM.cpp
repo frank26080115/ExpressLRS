@@ -932,23 +932,4 @@ uint16_t SerialHoTT_TLM::getHoTTMSLaltitude()
 #endif
 }
 
-uint32_t SerialHoTT_TLM::htobe24(uint32_t val)
-{
-#if !defined(BUILD_SHREW_UNNECESSARY) && defined(PLATFORM_ESP8266)
-    return val;
-#else
-#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-    return val;
-#else
-    uint8_t *ptrByte = (uint8_t *)&val;
-
-    uint8_t swp = ptrByte[0];
-    ptrByte[0] = ptrByte[2];
-    ptrByte[2] = swp;
-
-    return val;
-#endif
-#endif
-}
-
 #endif

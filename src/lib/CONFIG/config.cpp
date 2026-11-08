@@ -1286,6 +1286,16 @@ RxConfig::SetAntennaMode(uint8_t antennaMode)
 }
 
 void
+RxConfig::SetAntennaGroup(uint8_t antennaGroup)
+{
+    if (m_config.antennaGroup != antennaGroup)
+    {
+        m_config.antennaGroup = antennaGroup;
+        m_modified = EVENT_CONFIG_MODEL_CHANGED;
+    }
+}
+
+void
 RxConfig::SetDefaults(bool commit)
 {
     uint32_t deny_meta_cached = m_config.deny_meta;
@@ -1310,7 +1320,7 @@ RxConfig::SetDefaults(bool commit)
     {
         uint8_t mode = som50Hz;
         // setup defaults for hardware-defined I2C & Serial pins that are also IO pins
-        if (ch < GPIO_PIN_PWM_OUTPUTS_COUNT)
+        if (!OPT_PWM_OUT_ONLY && ch < GPIO_PIN_PWM_OUTPUTS_COUNT)
         {
             if (GPIO_PIN_PWM_OUTPUTS[ch] == GPIO_PIN_SCL)
             {

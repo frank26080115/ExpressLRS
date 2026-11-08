@@ -37,6 +37,7 @@ typedef enum {
 
     // Radio Antenna
     HARDWARE_ant_ctrl,
+    HARDWARE_ant_group,
 
     // Radio power
     HARDWARE_power_enable,
@@ -110,6 +111,7 @@ typedef enum {
     // screen_type == 0 is no screen
     HARDWARE_screen_type,
     HARDWARE_screen_reversed,
+    HARDWARE_screen_mirror,
     HARDWARE_screen_bl,
 
     // Backpack
@@ -138,6 +140,7 @@ typedef enum {
     // PWM
     HARDWARE_pwm_outputs,
     HARDWARE_pwm_outputs_count,
+    HARDWARE_pwm_out_only,
 
     // VBAT
     HARDWARE_vbat,

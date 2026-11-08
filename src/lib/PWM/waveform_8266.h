@@ -7,6 +7,7 @@ void enableWaveformOneShot8266(uint8_t gpio);
 void disableWaveformOneShot8266(uint8_t gpio);
 void refreshWaveformOneShot8266(uint8_t gpio, uint32_t pulses);
 #endif
+void feedWaveform8266();
 
 #define startWaveform DO_NOT_USE
 #define startWaveformClockCycles DO_NOT_USE
