@@ -14,7 +14,7 @@ void SerialGPS::sendQueuedData(uint32_t maxBytesToSend)
 // Parses a decimal string with optional decimal point and returns the value scaled by the given factor as an integer
 // Ex: "0.442" with scale 100 returns 44
 // Ex: "123.456" with scale 1000 returns 123456
-int32_t parseDecimalToScaled(const char* str, int32_t scale) {
+static int32_t parseDecimalToScaled(const char* str, int32_t scale) {
 #if !defined(BUILD_SHREW_UNNECESSARY) && defined(PLATFORM_ESP8266)
     (void)str;
     (void)scale;
@@ -60,7 +60,7 @@ int32_t parseDecimalToScaled(const char* str, int32_t scale) {
  * @brief Parse NMEA Decimal Degrees Minutes value and return Decimal Degrees * 1e7.
  * @param field Points to beginning of DDMM[M] string, must not be blank!
  */
-int32_t nmeaDdmToDd(const char *field)
+static int32_t nmeaDdmToDd(const char *field)
 {
 #if !defined(BUILD_SHREW_UNNECESSARY) && defined(PLATFORM_ESP8266)
     (void)field;
@@ -196,6 +196,37 @@ void SerialGPS::fieldParseVTG(SerialGPS *ctx, uint8_t fieldIdx, char *field)
 #endif
 }
 
+void SerialGPS::fieldParseRMC(SerialGPS *ctx, uint8_t fieldIdx, char *field)
+{
+    const bool blank = (field[0] == '\0');
+    if (blank) return;
+
+    switch (fieldIdx) {
+        case 1: // Time: HHMMSS.ss
+        {
+            uint32_t time_ms = parseDecimalToScaled(field, 1000);
+            ctx->gpsData.millisecond = time_ms % 1000;
+            time_ms /= 1000;
+            ctx->gpsData.second = time_ms % 100;
+            time_ms /= 100;
+            ctx->gpsData.minute = time_ms % 100;
+            time_ms /= 100;
+            ctx->gpsData.hour = time_ms % 100;
+            break;
+        }
+        case 9: // Date: DDMMYY
+        {
+            uint32_t date = atoi(field);
+            ctx->gpsData.year = 2000 + date % 100;
+            date /= 100;
+            ctx->gpsData.month = date % 100;
+            date /= 100;
+            ctx->gpsData.day = date % 100;
+            break;
+        }
+    }
+}
+
 void SerialGPS::processSentence(char *sentence, uint8_t size)
 {
 #if !defined(BUILD_SHREW_UNNECESSARY) && defined(PLATFORM_ESP8266)
@@ -212,6 +243,11 @@ void SerialGPS::processSentence(char *sentence, uint8_t size)
         // VTG usually comes before GGA, only generate one telemetry frame with both combined
         //sendTelemetryFrame();
     }
+    else if (sentence[3] == 'R' && sentence[4] == 'M' && sentence[5] == 'C') {
+        splitSentenceFields(sentence, size, &fieldParseRMC);
+        sendGpsTimeTelemetryFrame();
+    }
+    // Maybe we need to think about ZDA as well so we can adjust UTC to local time!
 #endif
 }
 
@@ -223,7 +259,7 @@ void SerialGPS::processBytes(uint8_t *bytes, uint16_t size)
     return;
 #else
     for (uint16_t i = 0; i < size; i++) {
-        char c = bytes[i];
+        const char c = bytes[i];
         if (nmeaBufferIndex < sizeof(nmeaBuffer)) {
             nmeaBuffer[nmeaBufferIndex++] = c;
         }
@@ -237,19 +273,39 @@ void SerialGPS::processBytes(uint8_t *bytes, uint16_t size)
 #endif
 }
 
+void SerialGPS::sendGpsTimeTelemetryFrame()
+{
+    // Don't send if there hasn't been an update to the year field
+    if (gpsData.year == 0)
+        return;
+
+    CRSF_MK_FRAME_T(crsf_sensor_gps_time_t) crsftime{};
+    crsftime.p.year = htobe16(gpsData.year);
+    crsftime.p.month = gpsData.month;
+    crsftime.p.day = gpsData.day;
+    crsftime.p.hour = gpsData.hour;
+    crsftime.p.minute = gpsData.minute;
+    crsftime.p.second = gpsData.second;
+    crsftime.p.millisecond = htobe16(gpsData.millisecond);
+    crsfRouter.SetHeaderAndCrc(&crsftime.h, CRSF_FRAMETYPE_GPS_TIME, CRSF_FRAME_SIZE(sizeof(crsf_sensor_gps_time_t)));
+    crsfRouter.deliverMessageTo(CRSF_ADDRESS_RADIO_TRANSMITTER, &crsftime.h);
+
+    gpsData.year = 0;
+}
+
 void SerialGPS::sendTelemetryFrame()
 {
 #if !defined(BUILD_SHREW_UNNECESSARY) && defined(PLATFORM_ESP8266)
     return;
 #else
-    CRSF_MK_FRAME_T(crsf_sensor_gps_t) crsfgps = { 0 };
+    CRSF_MK_FRAME_T(crsf_sensor_gps_t) crsfgps{};
     crsfgps.p.latitude = htobe32(gpsData.lat);
     crsfgps.p.longitude = htobe32(gpsData.lon);
     crsfgps.p.altitude = htobe16((int16_t)(gpsData.alt / 100 + 1000));
     crsfgps.p.groundspeed = htobe16((uint16_t)(gpsData.speed / 10));
     crsfgps.p.satellites_in_use = gpsData.satellites;
     crsfgps.p.gps_heading = htobe16(gpsData.heading);
-    crsfRouter.SetHeaderAndCrc((crsf_header_t *)&crsfgps, CRSF_FRAMETYPE_GPS, CRSF_FRAME_SIZE(sizeof(crsf_sensor_gps_t)));
+    crsfRouter.SetHeaderAndCrc(&crsfgps.h, CRSF_FRAMETYPE_GPS, CRSF_FRAME_SIZE(sizeof(crsf_sensor_gps_t)));
     crsfRouter.deliverMessageTo(CRSF_ADDRESS_RADIO_TRANSMITTER, &crsfgps.h);
 #endif
 }

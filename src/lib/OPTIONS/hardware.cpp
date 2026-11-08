@@ -45,6 +45,7 @@ static const struct {
     {HARDWARE_radio_rfsw_ctrl, "radio_rfsw_ctrl", ARRAY},
     {HARDWARE_radio_rfsw_ctrl_count, "radio_rfsw_ctrl", COUNT},
     {HARDWARE_ant_ctrl, "ant_ctrl", INT},
+    {HARDWARE_ant_group, "ant_group", INT},
     {HARDWARE_power_enable, "power_enable", INT},
     {HARDWARE_power_apc2, "power_apc2", INT},
     {HARDWARE_power_rxen, "power_rxen", INT},
@@ -103,6 +104,7 @@ static const struct {
     {HARDWARE_screen_sda, "screen_sda", INT},
     {HARDWARE_screen_type, "screen_type", INT},
     {HARDWARE_screen_reversed, "screen_reversed", BOOL},
+    {HARDWARE_screen_mirror, "screen_mirror", BOOL},
     {HARDWARE_screen_bl, "screen_bl", INT},
     {HARDWARE_use_backpack, "use_backpack", BOOL},
     {HARDWARE_debug_backpack_baud, "debug_backpack_baud", INT},
@@ -125,6 +127,7 @@ static const struct {
     #endif
     {HARDWARE_pwm_outputs, "pwm_outputs", ARRAY},
     {HARDWARE_pwm_outputs_count, "pwm_outputs", COUNT},
+    {HARDWARE_pwm_out_only, "pwm_out_only", BOOL},
     {HARDWARE_vbat, "vbat", INT},
     {HARDWARE_vbat_offset, "vbat_offset", INT},
     {HARDWARE_vbat_scale, "vbat_scale", INT},

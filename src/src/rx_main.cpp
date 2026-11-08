@@ -764,6 +764,10 @@ static void ICACHE_RAM_ATTR updateDiversity()
             antenna = config.GetAntennaMode();
         }
     }
+    if (GPIO_PIN_ANT_GROUP != UNDEF_PIN)
+    {
+        digitalWrite(GPIO_PIN_ANT_GROUP, config.GetAntennaGroup());
+    }
 }
 
 void ICACHE_RAM_ATTR HWtimerCallbackTock()
@@ -826,6 +830,7 @@ void LostConnection(bool resumeRx)
     LPF_Offset.init(0);
     LPF_OffsetDx.init(0);
     alreadyTLMresp = false;
+    OtaResetChannelDataComplete();
 
     if (!InBindingMode)
     {
@@ -848,6 +853,8 @@ void ICACHE_RAM_ATTR TentativeConnection(unsigned long now)
     PFDloop.reset();
     setConnectionState(tentative);
     connectionHasModelMatch = false;
+    ChannelDataReset();
+    OtaResetChannelDataComplete();
     RXtimerState = tim_disconnected;
     DBGLN("tentative conn");
     PfdPrevRawOffset = 0;
@@ -901,8 +908,10 @@ static void ICACHE_RAM_ATTR ProcessRfPacket_RC(OTA_Packet_s const * const otaPkt
     custommixer_mix();
     DataDlSender.ConfirmCurrentPayload(telemetryConfirmValue);
 
+    bool const channelDataComplete = OtaIsChannelDataComplete(ChannelData);
+
     // No channels packets to the FC or PWM pins if no model match
-    if (connectionHasModelMatch)
+    if (connectionHasModelMatch && channelDataComplete)
     {
         if (ExpressLRS_currAirRate_Modparams->numOfSends == 1)
         {
@@ -1605,6 +1614,11 @@ static void setupTarget()
         pinMode(GPIO_PIN_ANT_CTRL, OUTPUT);
         digitalWrite(GPIO_PIN_ANT_CTRL, LOW);
     }
+    if (GPIO_PIN_ANT_GROUP != UNDEF_PIN)
+    {
+        pinMode(GPIO_PIN_ANT_GROUP, OUTPUT);
+        digitalWrite(GPIO_PIN_ANT_GROUP, LOW);
+    }
 
     setupTargetCommon();
 }
@@ -1999,6 +2013,8 @@ static void updateSwitchMode()
         return;
 
     OtaUpdateSerializers((OtaSwitchMode_e)(SwitchModePending - 1), ExpressLRS_currAirRate_Modparams->PayloadLength);
+    ChannelDataReset();
+    OtaResetChannelDataComplete();
     SwitchModePending = 0;
 }
 
