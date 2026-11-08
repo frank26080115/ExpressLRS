@@ -836,7 +836,18 @@ void LostConnection(bool resumeRx)
     {
         if (hwTimer::running)
         {
-            while(micros() - PFDloop.getIntEventTime() > 250); // time it just after the tock()
+            // Prefer stopping just after a tock, but recover if the timer stops advancing.
+            const uint32_t waitTimeoutUs = 2U * ExpressLRS_currAirRate_Modparams->interval;
+            const uint32_t waitStartUs = micros();
+            while (hwTimer::running)
+            {
+                const uint32_t lastTockUs = PFDloop.getIntEventTime();
+                const uint32_t nowUs = micros();
+                if (nowUs - lastTockUs <= 250U || nowUs - waitStartUs >= waitTimeoutUs)
+                {
+                    break;
+                }
+            }
             hwTimer::stop();
         }
         SetRFLinkRate(ExpressLRS_nextAirRateIndex, false); // also sets to initialFreq
@@ -1791,8 +1802,7 @@ static void ExitBindingMode()
     LockRFmode = false;
     LostConnection(false);
 
-    // Do this last as LostConnection() will wait for a tock that never comes
-    // if we're in binding mode
+    // Keep binding mode set so LostConnection() skips timer shutdown and RF reconfiguration.
     InBindingMode = false;
     DBGLN("Exiting binding mode");
     devicesTriggerEvent(EVENT_EXIT_BIND_MODE);
