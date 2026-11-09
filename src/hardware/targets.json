@@ -164,6 +164,15 @@
                 "min_version": "3.4.0",
                 "platform": "esp32",
                 "firmware": "Unified_ShrewWifi_ESP32_2400_TX"
+            },
+            "ranger_nano_test_tx": {
+                "product_name": "Ranger Nano Test Tx",
+                "lua_name": "RNTest TX",
+                "layout_file": "Ranger Nano Test Tx.json",
+                "upload_methods": ["uart", "wifi", "etx"],
+                "min_version": "3.4.0",
+                "platform": "esp32",
+                "firmware": "Unified_RNTEST_2400_TX"
             }
         }
     },
