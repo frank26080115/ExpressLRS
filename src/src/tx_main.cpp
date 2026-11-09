@@ -35,6 +35,7 @@ void sendMAVLinkTelemetryToBackpack(uint8_t *) {}
 #include "TXModuleEndpoint.h"
 #include "TXOTAConnector.h"
 #include "TXUSBConnector.h"
+#include "shrew_rntesttx.h"
 
 #if defined(PLATFORM_ESP8266)
 #include <user_interface.h>
@@ -517,6 +518,51 @@ void SetRFLinkRate(uint8_t index) // Set speed of RF link
   rfModeLastChangedMS = millis();
 }
 
+#if defined(BUILD_SHREW_RNTESTTX) && defined(TARGET_TX)
+// Keep test randomness independent of the generator used to construct the FHSS table.
+static uint32_t rnTestTxRandomState = 1;
+
+static bool ICACHE_RAM_ATTR rnTestTxChance(uint32_t channelValue)
+{
+  if (channelValue <= CRSF_CHANNEL_VALUE_MIN)
+    return false;
+  if (channelValue >= CRSF_CHANNEL_VALUE_MAX)
+    return true;
+
+  // Xorshift32 needs a nonzero seed and performs no blocking work in the timer ISR.
+  rnTestTxRandomState ^= rnTestTxRandomState << 13;
+  rnTestTxRandomState ^= rnTestTxRandomState >> 17;
+  rnTestTxRandomState ^= rnTestTxRandomState << 5;
+  constexpr uint32_t span = CRSF_CHANNEL_VALUE_MAX - CRSF_CHANNEL_VALUE_MIN;
+  return rnTestTxRandomState % span < channelValue - CRSF_CHANNEL_VALUE_MIN;
+}
+
+bool ICACHE_RAM_ATTR shrewRnTestTxSuppressPacket(uint8_t *packet, size_t packetSize)
+{
+  // Binding must remain usable even with either fault control at its maximum.
+  if (InBindingMode || !handset->GetRCdataLastRecv())
+    return false;
+
+  const bool suppress = rnTestTxChance(ChannelData[4]);
+  const bool corrupt = rnTestTxChance(ChannelData[5]);
+  if (suppress)
+  {
+    // Follow the LBT no-transmission path: preserve the slot's normal completion
+    // timing so TXdoneISR() still advances hopping and prepares telemetry reception.
+    deferExecutionMicros(ExpressLRS_currAirRate_RFperfParams->TOA, Radio.TXdoneCallback);
+    return true;
+  }
+
+  if (corrupt)
+  {
+    // Both OTA versions end in CRC bytes, for both standard and full-resolution packets.
+    // Damage only the ELRS CRC; the radio still transmits a normally formed RF packet.
+    packet[packetSize - 1] ^= 0x01;
+  }
+  return false;
+}
+#endif
+
 void ICACHE_RAM_ATTR SendRCdataToRF()
 {
   if (ota_isLegacy) {
@@ -641,6 +687,11 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
       break;
     }
   }
+
+#if defined(BUILD_SHREW_RNTESTTX) && defined(TARGET_TX)
+  if (shrewRnTestTxSuppressPacket((uint8_t *)&otaPkt, Radio.PayloadLength))
+    return;
+#endif
 
 #if defined(Regulatory_Domain_EU_CE_2400)
   transmittingRadio = LbtChannelIsClear(transmittingRadio);   // weed out the radio(s) if channel in use
@@ -1445,6 +1496,15 @@ void setup()
   if (setupHardwareFromOptions())
   {
     setupTarget();
+#if defined(BUILD_SHREW_RNTESTTX) && defined(TARGET_TX)
+#if defined(PLATFORM_ESP32)
+    rnTestTxRandomState = esp_random() | 1U;
+#elif defined(PLATFORM_ESP8266)
+    rnTestTxRandomState = os_random() | 1U;
+#else
+    rnTestTxRandomState = micros() | 1U;
+#endif
+#endif
     // Register the devices with the framework
     devicesRegister(ui_devices, ARRAY_SIZE(ui_devices));
     // Initialise the devices

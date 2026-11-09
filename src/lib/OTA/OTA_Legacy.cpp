@@ -12,6 +12,7 @@
 #include "hwTimer.h"
 #include "handset.h"
 #include "LBT.h"
+#include "shrew_rntesttx.h"
 #include <stdlib.h>
 #ifdef TARGET_TX
 #include "LQCALC.h"
@@ -1162,6 +1163,11 @@ void ICACHE_RAM_ATTR SendRCdataToRF_v3()
       break;
     }
   }
+
+#if defined(BUILD_SHREW_RNTESTTX) && defined(TARGET_TX)
+  if (shrewRnTestTxSuppressPacket((uint8_t *)&otaPkt, Radio.PayloadLength))
+    return;
+#endif
 
 #if defined(Regulatory_Domain_EU_CE_2400)
   transmittingRadio = LbtChannelIsClear(transmittingRadio);   // weed out the radio(s) if channel in use
