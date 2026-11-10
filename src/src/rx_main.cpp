@@ -577,6 +577,16 @@ bool ICACHE_RAM_ATTR HandleSendDataDl()
         }
     }
 
+#if defined(TEST_SEND_BAD_TELEMETRY) && defined(TARGET_RX)
+    // Corrupt only the ELRS CRC, after generation and before any radio encoding.
+    const uint8_t crcByte = (OtaIsFullRes ? OTA8_PACKET_SIZE : OTA4_PACKET_SIZE) - 1;
+    ((uint8_t *)&otaPkt)[crcByte] ^= 0x01;
+    if (sendGeminiBuffer)
+    {
+        ((uint8_t *)&otaPktGemini)[crcByte] ^= 0x01;
+    }
+#endif
+
     // Gemini flips frequencies between radios on the rx side only.  This is to help minimise antenna cross polarization.
     // The payloads need to be switch when this happens.
     // GemX does not switch due to the time required to reconfigure the LR1121 params.

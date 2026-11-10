@@ -289,6 +289,12 @@ bool ICACHE_RAM_ATTR HandleSendTelemetryResponse_v3()
         }
     }
 
+#if defined(TEST_SEND_BAD_TELEMETRY) && defined(TARGET_RX)
+    // Corrupt only the ELRS CRC, after generation and before any radio encoding.
+    const uint8_t crcByte = (OtaIsFullRes ? OTA8_PACKET_SIZE : OTA4_PACKET_SIZE) - 1;
+    ((uint8_t *)&otaPkt)[crcByte] ^= 0x01;
+#endif
+
     Radio.TXnb((uint8_t*)&otaPkt, false, nullptr, transmittingRadio);
 
     if (transmittingRadio == SX12XX_Radio_NONE)
