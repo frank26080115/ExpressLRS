@@ -97,6 +97,14 @@ static void ledcAttachPinEx(uint8_t pin, uint8_t chan, ledc_timer_t timer)
     }
 }
 
+static void ledcClearDuty(uint8_t chan)
+{
+    // ledcSetupEx bypasses Arduino's resolution bookkeeping, so ledcWrite(0)
+    // can become one duty tick. Clear it directly; zero latches next PWM cycle.
+    ledc_set_duty(SPEED_MODE, (ledc_channel_t)chan, 0);
+    ledc_update_duty(SPEED_MODE, (ledc_channel_t)chan);
+}
+
 pwm_channel_t PWMController::allocate(uint8_t pin, uint32_t frequency)
 {
     // 1. see if we can allocate a MCPWM channel at this frequency
@@ -233,6 +241,7 @@ void PWMController::setDuty(pwm_channel_t channel, uint16_t duty)
         }
         else {
             if (ledc_config[ch].attached) {
+                ledcClearDuty(ch);
                 ledcDetachPin(ledc_config[ch].pin);
                 ledc_config[ch].attached = false;
             }
@@ -261,6 +270,7 @@ void PWMController::setMicroseconds(pwm_channel_t channel, uint16_t microseconds
         }
         else {
             if (ledc_config[ch].attached) {
+                ledcClearDuty(ch);
                 ledcDetachPin(ledc_config[ch].pin);
                 ledc_config[ch].attached = false;
             }
