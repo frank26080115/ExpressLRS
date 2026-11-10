@@ -20,6 +20,13 @@ public:
     SX1280Driver();
     bool Begin(uint32_t minimumFrequency, uint32_t maximumFrequency);
     void End();
+#if defined(TARGET_RX)
+    RadioRecoveryStatus startRecovery(uint32_t minimumFrequency, uint32_t maximumFrequency);
+    RadioRecoveryStatus pollRecovery(uint32_t now);
+    void cancelRecovery();
+    void setInterruptsEnabled(bool enabled);
+    void applyRecoveryPower() { CommitOutputPower(); }
+#endif
     void SetTxIdleMode() { SetMode(SX1280_MODE_FS, SX12XX_Radio_All); }; // set Idle mode used when switching from RX to TX
     void Config(uint8_t bw, uint8_t sf, uint8_t cr, uint32_t freq,
                 uint8_t PreambleLength, bool InvertIQ, uint8_t PayloadLength,
@@ -44,6 +51,11 @@ public:
     void CheckForSecondPacket();
 
 private:
+    bool beginAfterReset();
+#if defined(TARGET_RX)
+    RadioResetSequence recoveryReset;
+    RadioRecoveryStatus recoveryStatus = RadioRecoveryStatus::Unsupported;
+#endif
     // constant used for no power change pending
     // must not be a valid power register value
     static constexpr uint8_t PWRPENDING_NONE = 0x7f;

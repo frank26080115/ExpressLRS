@@ -51,6 +51,11 @@ bool SX127xDriver::Begin(uint32_t minimumFrequency, uint32_t maximumFrequency)
   hal.IsrCallback_2 = &SX127xDriver::IsrCallback_2;
 
   hal.reset();
+  return beginAfterReset();
+}
+
+bool SX127xDriver::beginAfterReset(bool runtimeRecovery)
+{
   DBGLN("SX127x Begin");
 
   RFAMP.init();
@@ -64,14 +69,15 @@ bool SX127xDriver::Begin(uint32_t minimumFrequency, uint32_t maximumFrequency)
 
   SetMode(SX127x_OPMODE_STANDBY, SX12XX_Radio_All);
 
-  if (!DetectChip(SX12XX_Radio_1))
+  // Boot detection retries with delay(200); runtime recovery retries through the scheduler instead.
+  if (runtimeRecovery ? hal.readRegister(SX127X_REG_VERSION, SX12XX_Radio_1) != SX127X_VERSION : !DetectChip(SX12XX_Radio_1))
   {
     return false;
   }
 
   if (GPIO_PIN_NSS_2 != UNDEF_PIN)
   {
-    if (!DetectChip(SX12XX_Radio_2))
+    if (runtimeRecovery ? hal.readRegister(SX127X_REG_VERSION, SX12XX_Radio_2) != SX127X_VERSION : !DetectChip(SX12XX_Radio_2))
     {
       return false;
     }
@@ -98,11 +104,69 @@ bool SX127xDriver::Begin(uint32_t minimumFrequency, uint32_t maximumFrequency)
 
 void SX127xDriver::End()
 {
+#if defined(TARGET_RX)
+  if (recoveryStatus == RadioRecoveryStatus::InProgress || recoveryStatus == RadioRecoveryStatus::Failed)
+  {
+    cancelRecovery();
+    hal.end();
+    RFAMP.TXRXdisable();
+    RemoveCallbacks();
+    return;
+  }
+#endif
   SetMode(SX127x_OPMODE_SLEEP, SX12XX_Radio_All);
   hal.end();
   RFAMP.TXRXdisable();
   RemoveCallbacks();
 }
+
+#if defined(TARGET_RX)
+void SX127xDriver::setInterruptsEnabled(bool enabled)
+{
+  hal.setInterruptsEnabled(enabled);
+}
+
+RadioRecoveryStatus SX127xDriver::startRecovery(uint32_t minimumFrequency, uint32_t maximumFrequency)
+{
+  if (GPIO_PIN_RST == UNDEF_PIN)
+    return RadioRecoveryStatus::Unsupported;
+
+  hal.end();
+  RemoveCallbacks();
+  RFAMP.TXRXdisable();
+  hal.init();
+  hal.setInterruptsEnabled(false);
+  currOpmode = SX127x_OPMODE_SLEEP;
+  ModFSKorLoRa = SX127x_OPMODE_LORA;
+  // Force configuration writes even when the requested settings equal the pre-reset cache.
+  currBW = static_cast<SX127x_Bandwidth>(0xFF);
+  currSF = static_cast<SX127x_SpreadingFactor>(0xFF);
+  currCR = static_cast<SX127x_CodingRate>(0xFF);
+  currPreambleLen = 0;
+  recoveryStatus = recoveryReset.start(50000U, 1U, true);
+  return recoveryStatus;
+}
+
+RadioRecoveryStatus SX127xDriver::pollRecovery(uint32_t now)
+{
+  if (recoveryStatus != RadioRecoveryStatus::InProgress)
+    return recoveryStatus;
+  if (recoveryReset.poll(now) != RadioRecoveryStatus::Ready)
+    return RadioRecoveryStatus::InProgress;
+
+  hal.IsrCallback_1 = &SX127xDriver::IsrCallback_1;
+  hal.IsrCallback_2 = &SX127xDriver::IsrCallback_2;
+  recoveryStatus = beginAfterReset(true) ? RadioRecoveryStatus::Ready : RadioRecoveryStatus::Failed;
+  return recoveryStatus;
+}
+
+void SX127xDriver::cancelRecovery()
+{
+  recoveryReset.cancel();
+  hal.setInterruptsEnabled(false);
+  recoveryStatus = RadioRecoveryStatus::Unsupported;
+}
+#endif
 
 void SX127xDriver::cwRepeat(SX12XX_Radio_Number_t radioNumber)
 {

@@ -63,16 +63,30 @@ LR1121Driver::LR1121Driver(): SX12xxDriverCommon()
 
 void LR1121Driver::End()
 {
+#if defined(TARGET_RX)
+    if (recoveryStatus == RadioRecoveryStatus::InProgress || recoveryStatus == RadioRecoveryStatus::Failed)
+    {
+        cancelRecovery();
+        hal.end();
+        RemoveCallbacks();
+        return;
+    }
+#endif
     SetMode(LR1121_MODE_SLEEP, SX12XX_Radio_All);
     hal.end();
     RemoveCallbacks();
 }
 
-bool LR1121Driver::CheckVersion(const SX12XX_Radio_Number_t radioNumber)
+bool LR1121Driver::CheckVersion(const SX12XX_Radio_Number_t radioNumber, bool allowUpgrade)
 {
     firmware_version_t version = GetFirmwareVersion(radioNumber);
+    if (!allowUpgrade && (version.type != LR1121_FIRMWARE_TYPE || version.version == 0 || version.version == 0xFFFF))
+        return false;
     if (!LittleFS.exists("/lr1121.txt") && (version.type != LR1121_FIRMWARE_TYPE || version.version != LR11XX_FIRMWARE_VERSION))
     {
+        // Runtime recovery must never enter the firmware flashing path.
+        if (!allowUpgrade)
+            return false;
         DBGLN("Upgrading radio #%d", radioNumber);
         // do upgrade
         if (BeginUpdate(radioNumber, sizeof(lr11xx_firmware_image)) != 0) return false;
@@ -109,12 +123,16 @@ bool LR1121Driver::Begin(uint32_t minimumFrequency, uint32_t maximumFrequency)
 {
     hal.init();
     hal.reset();
+    return beginAfterReset(minimumFrequency, maximumFrequency, true);
+}
 
+bool LR1121Driver::beginAfterReset(uint32_t minimumFrequency, uint32_t maximumFrequency, bool allowUpgrade)
+{
     // Validate that the LR1121(s) are working.
-    if (!CheckVersion(SX12XX_Radio_1)) return false;
+    if (!CheckVersion(SX12XX_Radio_1, allowUpgrade)) return false;
     if (GPIO_PIN_NSS_2 != UNDEF_PIN)
     {
-        if (!CheckVersion(SX12XX_Radio_2)) return false;
+        if (!CheckVersion(SX12XX_Radio_2, allowUpgrade)) return false;
     }
 
     hal.IsrCallback_1 = &LR1121Driver::IsrCallback_1;
@@ -158,6 +176,50 @@ transitioning from FS mode and the other from Standby mode. This causes the tx d
 
     return true;
 }
+
+#if defined(TARGET_RX)
+void LR1121Driver::setInterruptsEnabled(bool enabled)
+{
+    hal.setInterruptsEnabled(enabled);
+}
+
+RadioRecoveryStatus LR1121Driver::startRecovery(uint32_t minimumFrequency, uint32_t maximumFrequency)
+{
+    if (GPIO_PIN_RST == UNDEF_PIN)
+        return RadioRecoveryStatus::Unsupported;
+
+    hal.end(); // Detach IRQs before resetting the SPI peripheral; do not send a sleep command.
+    RemoveCallbacks();
+    hal.init();
+    hal.setInterruptsEnabled(false);
+    recoveryMinimumFrequency = minimumFrequency;
+    recoveryMaximumFrequency = maximumFrequency;
+    codec = &copyCodec;
+    pwrForceUpdate = true;
+    recoveryStatus = recoveryReset.start(1000U, 300U);
+    return recoveryStatus;
+}
+
+RadioRecoveryStatus LR1121Driver::pollRecovery(uint32_t now)
+{
+    if (recoveryStatus != RadioRecoveryStatus::InProgress)
+        return recoveryStatus;
+    if (recoveryReset.poll(now) != RadioRecoveryStatus::Ready)
+        return RadioRecoveryStatus::InProgress;
+
+    const bool ready = hal.WaitOnBusy(SX12XX_Radio_All) &&
+        beginAfterReset(recoveryMinimumFrequency, recoveryMaximumFrequency, false);
+    recoveryStatus = ready ? RadioRecoveryStatus::Ready : RadioRecoveryStatus::Failed;
+    return recoveryStatus;
+}
+
+void LR1121Driver::cancelRecovery()
+{
+    recoveryReset.cancel();
+    hal.setInterruptsEnabled(false);
+    recoveryStatus = RadioRecoveryStatus::Unsupported;
+}
+#endif
 
 // 12.2.1 SetTxCw
 void LR1121Driver::startCWTest(uint32_t freq, SX12XX_Radio_Number_t radioNumber)

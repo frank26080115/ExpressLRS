@@ -50,8 +50,9 @@ public:
      * @brief Set the power level, constrained to MinPower..MaxPower
      *
      * @param Power the power level to set
+     * @param force rewrite hardware after a radio reset even if the cached level matches
      */
-    static void setPower(PowerLevels_e Power);
+    static void setPower(PowerLevels_e Power, bool force = false);
 
     /**
      * @brief Increment to the next higher power level, capped at MaxPower

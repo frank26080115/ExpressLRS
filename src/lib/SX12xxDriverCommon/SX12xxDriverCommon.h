@@ -1,6 +1,9 @@
 #pragma once
 
 #include "targets.h"
+#if defined(TARGET_RX)
+#include "RadioRecovery.h"
+#endif
 
 typedef uint8_t SX12XX_Radio_Number_t;
 enum

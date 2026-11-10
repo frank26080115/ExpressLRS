@@ -13,6 +13,7 @@ public:
 
     void init();
     void end();
+    void setInterruptsEnabled(bool enabled);
     void reset();
 
     uint8_t ICACHE_RAM_ATTR readRegisterBits(uint8_t reg, uint8_t mask, SX12XX_Radio_Number_t radioNumber);

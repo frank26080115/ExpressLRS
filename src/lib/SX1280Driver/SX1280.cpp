@@ -57,6 +57,16 @@ SX1280Driver::SX1280Driver(): SX12xxDriverCommon()
 
 void SX1280Driver::End()
 {
+#if defined(TARGET_RX)
+    if (recoveryStatus == RadioRecoveryStatus::InProgress || recoveryStatus == RadioRecoveryStatus::Failed)
+    {
+        cancelRecovery();
+        hal.end();
+        RFAMP.TXRXdisable();
+        RemoveCallbacks();
+        return;
+    }
+#endif
     if (currOpmode != SX1280_MODE_SLEEP)
     {
         SetMode(SX1280_MODE_SLEEP, SX12XX_Radio_All);
@@ -75,6 +85,11 @@ bool SX1280Driver::Begin(uint32_t minimumFrequency, uint32_t maximumFrequency)
     hal.IsrCallback_2 = &SX1280Driver::IsrCallback_2;
 
     hal.reset();
+    return beginAfterReset();
+}
+
+bool SX1280Driver::beginAfterReset()
+{
     DBGLN("SX1280 Begin");
 
     RFAMP.init();
@@ -133,6 +148,49 @@ transitioning from FS mode and the other from Standby mode. This causes the tx d
 
     return true;
 }
+
+#if defined(TARGET_RX)
+void SX1280Driver::setInterruptsEnabled(bool enabled)
+{
+    hal.setInterruptsEnabled(enabled);
+}
+
+RadioRecoveryStatus SX1280Driver::startRecovery(uint32_t minimumFrequency, uint32_t maximumFrequency)
+{
+    if (GPIO_PIN_RST == UNDEF_PIN)
+        return RadioRecoveryStatus::Unsupported;
+
+    hal.end();
+    RemoveCallbacks();
+    RFAMP.TXRXdisable();
+    hal.init();
+    hal.setInterruptsEnabled(false);
+    currOpmode = SX1280_MODE_SLEEP;
+    recoveryStatus = recoveryReset.start(6U, 60U); // 50ms boot buffer plus the 10ms no-BUSY guard.
+    return recoveryStatus;
+}
+
+RadioRecoveryStatus SX1280Driver::pollRecovery(uint32_t now)
+{
+    if (recoveryStatus != RadioRecoveryStatus::InProgress)
+        return recoveryStatus;
+    if (recoveryReset.poll(now) != RadioRecoveryStatus::Ready)
+        return RadioRecoveryStatus::InProgress;
+
+    hal.IsrCallback_1 = &SX1280Driver::IsrCallback_1;
+    hal.IsrCallback_2 = &SX1280Driver::IsrCallback_2;
+    const bool ready = hal.WaitOnBusy(SX12XX_Radio_All) && beginAfterReset();
+    recoveryStatus = ready ? RadioRecoveryStatus::Ready : RadioRecoveryStatus::Failed;
+    return recoveryStatus;
+}
+
+void SX1280Driver::cancelRecovery()
+{
+    recoveryReset.cancel();
+    hal.setInterruptsEnabled(false);
+    recoveryStatus = RadioRecoveryStatus::Unsupported;
+}
+#endif
 
 void SX1280Driver::startCWTest(uint32_t freq, SX12XX_Radio_Number_t radioNumber)
 {

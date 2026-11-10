@@ -239,10 +239,10 @@ void POWERMGNT::setDefaultPower()
     setPower(getDefaultPower());
 }
 
-void POWERMGNT::setPower(PowerLevels_e Power)
+void POWERMGNT::setPower(PowerLevels_e Power, bool force)
 {
     Power = constrain(Power, getMinPower(), getMaxPower());
-    if (Power == CurrentPower)
+    if (Power == CurrentPower && !force)
         return;
     CurrentPower = Power;
 

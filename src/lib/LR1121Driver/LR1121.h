@@ -34,6 +34,13 @@ public:
     LR1121Driver();
     bool Begin(uint32_t minimumFrequency, uint32_t maximumFrequency);
     void End();
+#if defined(TARGET_RX)
+    RadioRecoveryStatus startRecovery(uint32_t minimumFrequency, uint32_t maximumFrequency);
+    RadioRecoveryStatus pollRecovery(uint32_t now);
+    void cancelRecovery();
+    void setInterruptsEnabled(bool enabled);
+    void applyRecoveryPower() { CommitOutputPower(); }
+#endif
     void SetTxIdleMode() { SetMode(LR1121_MODE_FS, SX12XX_Radio_All); }; // set Idle mode used when switching from RX to TX
     void Config(uint8_t bw, uint8_t sf, uint8_t cr, uint32_t freq,
                 uint8_t PreambleLength, bool InvertIQ, uint8_t PayloadLength, RadioBandMod::Combined modulation,
@@ -85,7 +92,13 @@ private:
     WORD_ALIGNED_ATTR uint8_t rx_buf[32] = {};
     WORD_ALIGNED_ATTR uint8_t rx2_buf[32] = {};
 
-    bool CheckVersion(SX12XX_Radio_Number_t radioNumber);
+    bool CheckVersion(SX12XX_Radio_Number_t radioNumber, bool allowUpgrade = true);
+    bool beginAfterReset(uint32_t minimumFrequency, uint32_t maximumFrequency, bool allowUpgrade);
+#if defined(TARGET_RX)
+    RadioResetSequence recoveryReset;
+    RadioRecoveryStatus recoveryStatus = RadioRecoveryStatus::Unsupported;
+    uint32_t recoveryMinimumFrequency, recoveryMaximumFrequency;
+#endif
 
     void SetMode(lr11xx_RadioOperatingModes_t OPmode, SX12XX_Radio_Number_t radioNumber);
 

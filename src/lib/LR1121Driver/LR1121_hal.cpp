@@ -14,11 +14,7 @@ LR1121Hal::LR1121Hal()
 
 void LR1121Hal::end()
 {
-    detachInterrupt(GPIO_PIN_DIO1);
-    if (GPIO_PIN_DIO1_2 != UNDEF_PIN)
-    {
-        detachInterrupt(GPIO_PIN_DIO1_2);
-    }
+    setInterruptsEnabled(false);
     SPIEx.end();
     IsrCallback_1 = nullptr;
     IsrCallback_2 = nullptr;
@@ -69,10 +65,22 @@ void LR1121Hal::init()
     SPIEx.setFrequency(16000000);
 #endif
 
-    attachInterrupt(digitalPinToInterrupt(GPIO_PIN_DIO1), this->dioISR_1, RISING);
-    if (GPIO_PIN_DIO1_2 != UNDEF_PIN)
+    setInterruptsEnabled(true);
+}
+
+void LR1121Hal::setInterruptsEnabled(bool enabled)
+{
+    if (enabled)
     {
-        attachInterrupt(digitalPinToInterrupt(GPIO_PIN_DIO1_2), this->dioISR_2, RISING);
+        attachInterrupt(digitalPinToInterrupt(GPIO_PIN_DIO1), this->dioISR_1, RISING);
+        if (GPIO_PIN_DIO1_2 != UNDEF_PIN)
+            attachInterrupt(digitalPinToInterrupt(GPIO_PIN_DIO1_2), this->dioISR_2, RISING);
+    }
+    else
+    {
+        detachInterrupt(GPIO_PIN_DIO1);
+        if (GPIO_PIN_DIO1_2 != UNDEF_PIN)
+            detachInterrupt(GPIO_PIN_DIO1_2);
     }
 }
 
