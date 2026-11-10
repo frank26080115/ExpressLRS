@@ -49,12 +49,19 @@ static const struct
 static uint32_t mcpwm_frequencies[MCPWM_CHANNELS] = {0};
 #endif
 
+enum class LedcState : uint8_t
+{
+    Detached,
+    Attached,
+    PendingDetach,
+};
+
 static struct
 {
     int8_t pin;
     uint8_t resolution_bits;
     uint32_t interval;
-    bool attached;
+    LedcState state;
     uint8_t tmr_idx;
 } ledc_config[LEDC_CHANNELS];
 static uint32_t ledcTimerConfigs[LEDC_TIMER_MAX] = {0};
@@ -179,7 +186,7 @@ pwm_channel_t PWMController::allocate(uint8_t pin, uint32_t frequency)
                     ledc_config[ch].pin = pin;
                     ledc_config[ch].resolution_bits = bits;
                     ledc_config[ch].interval = 1000000U / frequency;
-                    ledc_config[ch].attached = true;
+                    ledc_config[ch].state = LedcState::Attached;
                     ledc_config[ch].tmr_idx = timer_idx;
                     DBGLN("allocate ledc_ch %d on pin %d using ledc_tim: %d, bits: %d", ch, pin, timer_idx, bits);
                     return ch | LEDC_CHANNEL_FLAG;
@@ -203,7 +210,7 @@ void PWMController::release(pwm_channel_t channel)
         ledc_config[ch].pin = -1;
         ledc_config[ch].resolution_bits = 0;
         ledc_config[ch].interval = 0;
-        ledc_config[ch].attached = false;
+        ledc_config[ch].state = LedcState::Detached;
     }
 #if SOC_MCPWM_SUPPORTED
     else if (IS_MCPWM_CHANNEL(channel))
@@ -225,20 +232,25 @@ static void setLedcMapped(pwm_channel_t channel, bool active, uint32_t raw)
 
     if (active)
     {
-        if (!ledc_config[ch].attached)
+        if (ledc_config[ch].state == LedcState::Detached)
         {
             ledcAttachPinEx(ledc_config[ch].pin, ch, (ledc_timer_t)(ledc_config[ch].tmr_idx));
-            ledc_config[ch].attached = true;
         }
 
+        // A new command cancels a pending stop without reconnecting a live signal.
+        ledc_config[ch].state = LedcState::Attached;
         ledcWrite(ch, raw);
     }
     else
     {
-        if (ledc_config[ch].attached)
+        if (ledc_config[ch].state == LedcState::Attached)
         {
-            ledcDetachPin(ledc_config[ch].pin);
-            ledc_config[ch].attached = false;
+            // Zero takes effect next cycle, allowing the current pulse to finish.
+            // Bypass ledcWrite(0): our custom setup leaves Arduino's resolution
+            // bookkeeping unset, which can turn zero into one duty tick.
+            ledc_set_duty(SPEED_MODE, (ledc_channel_t)ch, 0);
+            ledc_update_duty(SPEED_MODE, (ledc_channel_t)ch);
+            ledc_config[ch].state = LedcState::PendingDetach;
         }
     }
 }
@@ -279,6 +291,21 @@ void PWMController::setMicroseconds(pwm_channel_t channel, uint16_t microseconds
         mcpwm_set_duty_in_us(mcpwm_config[ch].unit, mcpwm_config[ch].timer, mcpwm_config[ch].generator, microseconds);
     }
 #endif
+}
+
+void PWMController::poll()
+{
+    for (int ch = 0; ch < LEDC_CHANNELS; ++ch)
+    {
+        if (ledc_config[ch].resolution_bits != 0 &&
+            ledc_config[ch].state == LedcState::PendingDetach &&
+            ledc_get_duty(SPEED_MODE, (ledc_channel_t)ch) == 0)
+        {
+            // Read back the active duty, not the pending zero written above.
+            ledcDetachPin(ledc_config[ch].pin);
+            ledc_config[ch].state = LedcState::Detached;
+        }
+    }
 }
 
 void PWMController::feedWatchdog()

@@ -324,6 +324,7 @@ static void servoServiceOutputs(bool controlsActive)
 
 void servosUpdate(unsigned long now)
 {
+    PWM.poll();
     PWM.feedWatchdog();
 
     // Browser control supplies channel updates while the RF link is stopped.

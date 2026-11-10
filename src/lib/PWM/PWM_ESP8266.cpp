@@ -55,6 +55,11 @@ void PWMController::setMicroseconds(pwm_channel_t channel, uint16_t microseconds
     startWaveform8266(pin, microseconds, refreshInterval[channel] - microseconds);
 }
 
+void PWMController::poll()
+{
+    
+}
+
 void PWMController::feedWatchdog()
 {
     feedWaveform8266();

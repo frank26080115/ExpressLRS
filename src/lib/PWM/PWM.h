@@ -39,6 +39,13 @@ public:
     void setMicroseconds(pwm_channel_t channel, uint16_t microseconds);
 
     /**
+     * @brief Service housekeeping tasks
+     *
+     * Call this method periodically to perform housekeeping tasks
+     */
+    void poll();
+
+    /**
      * @brief Service the watchdog timer to prevent an unintended runaway if there are no channel updates.
      *
      * Call this method periodically within the required watchdog timeout window to
