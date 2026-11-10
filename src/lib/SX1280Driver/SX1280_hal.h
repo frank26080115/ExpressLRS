@@ -36,6 +36,7 @@ public:
 
     void init();
     void end();
+    void setInterruptsEnabled(bool enabled);
     void reset();
 
     void ICACHE_RAM_ATTR WriteCommand(SX1280_RadioCommands_t command, uint8_t val, SX12XX_Radio_Number_t radioNumber, uint32_t busyDelay = 15);

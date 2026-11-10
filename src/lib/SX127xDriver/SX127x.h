@@ -26,6 +26,13 @@ public:
     SX127xDriver();
     bool Begin(uint32_t minimumFrequency, uint32_t maximumFrequency);
     void End();
+#if defined(TARGET_RX)
+    RadioRecoveryStatus startRecovery(uint32_t minimumFrequency, uint32_t maximumFrequency);
+    RadioRecoveryStatus pollRecovery(uint32_t now);
+    void cancelRecovery();
+    void setInterruptsEnabled(bool enabled);
+    void applyRecoveryPower() { CommitOutputPower(); }
+#endif
     bool DetectChip(SX12XX_Radio_Number_t radioNumber);
     void Config(uint8_t bw, uint8_t sf, uint8_t cr, uint32_t freq, uint8_t preambleLen, uint8_t syncWord, bool InvertIQ, uint8_t _PayloadLength);
     void Config(uint8_t bw, uint8_t sf, uint8_t cr, uint32_t freq, uint8_t preambleLen, bool InvertIQ, uint8_t _PayloadLength);
@@ -76,6 +83,11 @@ public:
     void RXnb();
 
 private:
+    bool beginAfterReset(bool runtimeRecovery = false);
+#if defined(TARGET_RX)
+    RadioResetSequence recoveryReset;
+    RadioRecoveryStatus recoveryStatus = RadioRecoveryStatus::Unsupported;
+#endif
     // constant used for no power change pending
     // must not be a valid power register value
     static const int16_t PWRPENDING_NONE = -1;

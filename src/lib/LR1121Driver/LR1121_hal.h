@@ -12,6 +12,7 @@ public:
 
     void init();
     void end();
+    void setInterruptsEnabled(bool enabled);
     void reset(bool bootloader = false);
 
     void ICACHE_RAM_ATTR WriteCommand(uint16_t opcode, SX12XX_Radio_Number_t radioNumber);

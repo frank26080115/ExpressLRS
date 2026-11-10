@@ -193,6 +193,24 @@ uint32_t RFmodeLastCycled = 0;
 #define RFmodeCycleMultiplierSlow 10
 uint8_t RFmodeCycleMultiplier;
 bool LockRFmode = false;
+struct RadioRecoveryState
+{
+    bool active = false;
+    bool resetting = false;
+    bool failed = false;
+    volatile bool bindingRequested = false; // Device callbacks can run on the other ESP32 core.
+    uint8_t attempts = 0;
+    uint8_t rateIndex = 0;
+    uint32_t windowMs = 0;
+    uint32_t lastAttemptMs = 0;
+};
+static RadioRecoveryState radioRecovery;
+static bool radioResetUnsupported = false;
+
+static bool recoveryOwnsRadio()
+{
+    return radioRecovery.resetting || radioRecovery.failed;
+}
 ///////////////////////////////////////
 
 #if defined(DEBUG_BF_LINK_STATS)
@@ -815,6 +833,24 @@ void ICACHE_RAM_ATTR HWtimerCallbackTock()
     #endif
 }
 
+static void armRadioRecovery()
+{
+    if (!radioRecovery.active)
+    {
+        const uint32_t syncInterval = std::max(
+            ExpressLRS_currAirRate_RFperfParams->SyncPktIntervalConnected,
+            ExpressLRS_currAirRate_RFperfParams->SyncPktIntervalDisconnected);
+        radioRecovery.windowMs = std::max<uint32_t>(1000U, std::max<uint32_t>(2U * cycleInterval, 2U * syncInterval));
+        radioRecovery.attempts = 0;
+        radioRecovery.active = true;
+    }
+    radioRecovery.lastAttemptMs = millis();
+    // Keep existing outputs in failsafe without starting outputs that have never
+    // received valid controls. The servo device continues servicing one-shot pulses.
+    if (OPT_HAS_SERVO_OUTPUT && servo_initialized)
+        servosFailsafe(false);
+}
+
 void LostConnection(bool resumeRx)
 {
     DBGLN("lost conn fc=%d fo=%d", FreqCorrection, hwTimer::getFreqOffset());
@@ -855,6 +891,7 @@ void LostConnection(bool resumeRx)
         if (resumeRx)
         {
             Radio.RXnb();
+            armRadioRecovery();
         }
     }
 }
@@ -893,6 +930,7 @@ void GotConnection(unsigned long now)
     }
 
     LockRFmode = firmwareOptions.lock_on_first_connection;
+    radioRecovery = RadioRecoveryState{};
 
     setConnectionState(connected); //we got a packet, therefore no lost connection
     RXtimerState = tim_tentative;
@@ -1901,6 +1939,15 @@ void EnterBindingModeSafely()
     if (connectionState == serialUpdate || InBindingMode)
         return;
 
+    if (recoveryOwnsRadio())
+    {
+        // Button/Lua requests can arrive while the reset pin is asserted.
+        radioRecovery.bindingRequested = true;
+        webserverPreventAutoStart = true;
+        return;
+    }
+    radioRecovery = RadioRecoveryState{};
+
     // Never enter wifi mode after requesting to enter binding mode
     webserverPreventAutoStart = true;
 
@@ -2030,14 +2077,165 @@ static void updateSwitchMode()
 
 static void CheckConfigChangePending()
 {
+    if (recoveryOwnsRadio())
+        return;
     if (config.IsModified() && !InBindingMode && connectionState < NO_CONFIG_SAVE_STATES)
     {
+        const bool resumeRecovery = radioRecovery.active || connectionState == connected;
         LostConnection(false);
         uint32_t changes = config.Commit();
         devicesTriggerEvent(changes);
         LbtEnableIfRequired();
         Radio.RXnb();
+        if (resumeRecovery)
+            armRadioRecovery();
     }
+}
+
+static void prepareRadioRecovery()
+{
+    Radio.setInterruptsEnabled(false);
+    hwTimer::stop(); // Already disconnected: do not enter LostConnection's tock wait again.
+    RXtimerState = tim_disconnected;
+    hwTimer::resetFreqOffset();
+    doStartTimer = false;
+    alreadyTLMresp = false;
+    uplinkLQ = 0;
+    LQCalc.reset();
+    LQCalcDVDA.reset();
+    PFDloop.reset();
+    LPF_Offset.init(0);
+    LPF_OffsetDx.init(0);
+    Radio.hasSecondRadioGotData = false;
+    Radio.gotRadio[0] = Radio.gotRadio[1] = false;
+    if (OPT_HAS_SERVO_OUTPUT && servo_initialized)
+        servosFailsafe(false);
+}
+
+static void resumeRadioRecovery(bool startReceiving = true)
+{
+    Radio.RXdoneCallback = &RXdoneISR;
+    Radio.TXdoneCallback = &TXdoneISR;
+    // Driver initialization writes its default power. Force the selected telemetry
+    // power back into hardware even if POWERMGNT's cached level has not changed.
+    POWERMGNT::setPower(POWERMGNT::currPower(), true);
+    SetRFLinkRate(radioRecovery.rateIndex, false);
+    Radio.applyRecoveryPower();
+    RFmodeLastCycled = millis();
+    LastSyncPacket = RFmodeLastCycled;
+#if defined(RADIO_SX128X)
+    Radio.ClearIrqStatus(SX1280_IRQ_RADIO_ALL, SX12XX_Radio_All);
+#elif defined(RADIO_SX127X)
+    Radio.ClearIrqFlags(SX12XX_Radio_All);
+#else
+    Radio.ClearIrqStatus(SX12XX_Radio_All);
+#endif
+    Radio.setInterruptsEnabled(true);
+    if (startReceiving)
+        Radio.RXnb();
+    radioRecovery.lastAttemptMs = millis();
+    radioRecovery.resetting = false;
+    radioRecovery.failed = false;
+}
+
+// Returns true while normal RF work must be skipped. Devices, serial I/O and
+// deferred mode changes are still serviced on every pass through the main loop.
+static bool serviceRadioRecovery(uint32_t now)
+{
+    if (!radioRecovery.active)
+        return false;
+
+    if (InBindingMode || connectionState > MODE_STATES)
+    {
+        if (recoveryOwnsRadio())
+            Radio.cancelRecovery();
+        radioRecovery = RadioRecoveryState{};
+        return false;
+    }
+    if (connectionState == connected)
+    {
+        radioRecovery = RadioRecoveryState{};
+        return false;
+    }
+    if (radioRecovery.bindingRequested && !recoveryOwnsRadio())
+    {
+        // Also catch a request queued during the final initialization handoff.
+        radioRecovery.bindingRequested = false;
+        EnterBindingModeSafely();
+        return true;
+    }
+
+    if (radioRecovery.resetting)
+    {
+        const RadioRecoveryStatus status = Radio.pollRecovery(now);
+        if (status == RadioRecoveryStatus::InProgress)
+            return true;
+
+        radioRecovery.resetting = false;
+        radioRecovery.lastAttemptMs = millis();
+        if (status != RadioRecoveryStatus::Ready)
+        {
+            DBGLN("Radio recovery initialization failed; retry in %u ms", radioRecovery.windowMs);
+            radioRecovery.failed = true;
+            return true;
+        }
+        DBGLN("Radio recovery initialized, rate %u", radioRecovery.rateIndex);
+        const bool bindingRequested = radioRecovery.bindingRequested;
+        // Keep the radio in standby when binding is queued, so an arriving sync
+        // cannot restart the RF timer between initialization and binding setup.
+        resumeRadioRecovery(!bindingRequested);
+        if (bindingRequested)
+        {
+            radioRecovery.bindingRequested = false;
+            EnterBindingModeSafely();
+        }
+        return true;
+    }
+
+    // Leave tentative acquisition to its existing timeout. A failed initialization,
+    // however, must park all ordinary RF work until the next scheduled reset.
+    if (connectionState != disconnected || uint32_t(now - radioRecovery.lastAttemptMs) < radioRecovery.windowMs)
+        return radioRecovery.failed;
+
+    // An RX IRQ can begin tentative acquisition after the state check above.
+    // Close that race before resetting its timer or changing radio parameters.
+    Radio.setInterruptsEnabled(false);
+    if (connectionState != disconnected)
+    {
+        Radio.setInterruptsEnabled(true);
+        return false;
+    }
+    const bool hardReset = radioRecovery.failed || ++radioRecovery.attempts >= 3;
+    if (!radioRecovery.failed)
+        radioRecovery.rateIndex = ExpressLRS_currAirRate_Modparams->index;
+    prepareRadioRecovery();
+    if (hardReset)
+        radioRecovery.attempts = 0;
+    if (hardReset && !radioResetUnsupported)
+    {
+        DBGLN("Radio recovery reset, rate %u", radioRecovery.rateIndex);
+        const RadioRecoveryStatus status = Radio.startRecovery(FHSSgetMinimumFreq(), FHSSgetMaximumFreq());
+        radioRecovery.lastAttemptMs = millis();
+        if (status == RadioRecoveryStatus::InProgress)
+        {
+            radioRecovery.resetting = true;
+            return true;
+        }
+        if (status == RadioRecoveryStatus::Failed)
+        {
+            radioRecovery.failed = true;
+            return true;
+        }
+        if (status == RadioRecoveryStatus::Unsupported)
+        {
+            radioResetUnsupported = true;
+            DBGLN("Radio reset unavailable; continuing receive retries");
+        }
+    }
+
+    DBGLN("Radio recovery receive retry, rate %u", radioRecovery.rateIndex);
+    resumeRadioRecovery();
+    return true;
 }
 
 #if defined(PLATFORM_ESP8266)
@@ -2191,8 +2389,11 @@ void loop()
 
     checkRebootTime(now);
 
-    CheckConfigChangePending();
     executeDeferredFunction(micros());
+
+    if (serviceRadioRecovery(millis()))
+        return;
+    CheckConfigChangePending();
 
     if (connectionState > MODE_STATES)
     {

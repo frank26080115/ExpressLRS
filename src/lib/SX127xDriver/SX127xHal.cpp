@@ -14,11 +14,7 @@ SX127xHal::SX127xHal()
 
 void SX127xHal::end()
 {
-    detachInterrupt(GPIO_PIN_DIO0);
-    if (GPIO_PIN_DIO0_2 != UNDEF_PIN)
-    {
-        detachInterrupt(GPIO_PIN_DIO0_2);
-    }
+    setInterruptsEnabled(false);
     SPIEx.end();
     IsrCallback_1 = nullptr; // remove callbacks
     IsrCallback_2 = nullptr; // remove callbacks
@@ -58,10 +54,22 @@ void SX127xHal::init()
     SPIEx.setFrequency(10000000);
 #endif
 
-    attachInterrupt(digitalPinToInterrupt(GPIO_PIN_DIO0), this->dioISR_1, RISING);
-    if (GPIO_PIN_DIO0_2 != UNDEF_PIN)
+    setInterruptsEnabled(true);
+}
+
+void SX127xHal::setInterruptsEnabled(bool enabled)
+{
+    if (enabled)
     {
-        attachInterrupt(digitalPinToInterrupt(GPIO_PIN_DIO0_2), this->dioISR_2, RISING);
+        attachInterrupt(digitalPinToInterrupt(GPIO_PIN_DIO0), this->dioISR_1, RISING);
+        if (GPIO_PIN_DIO0_2 != UNDEF_PIN)
+            attachInterrupt(digitalPinToInterrupt(GPIO_PIN_DIO0_2), this->dioISR_2, RISING);
+    }
+    else
+    {
+        detachInterrupt(GPIO_PIN_DIO0);
+        if (GPIO_PIN_DIO0_2 != UNDEF_PIN)
+            detachInterrupt(GPIO_PIN_DIO0_2);
     }
 }
 
