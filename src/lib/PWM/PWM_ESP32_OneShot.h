@@ -33,8 +33,7 @@ private:
     static PwmOneShot *current;
     static rmt_channel_t rmtChannel;
     static int previousPin;
-    static uint32_t lastStartUs;
-    static uint16_t lastDurationUs;
+    static rmt_item32_t txItems[2];
 };
 
 #endif

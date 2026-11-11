@@ -7,8 +7,7 @@ PwmOneShot *PwmOneShot::tail = nullptr;
 PwmOneShot *PwmOneShot::current = nullptr;
 rmt_channel_t PwmOneShot::rmtChannel = RMT_CHANNEL_MAX;
 int PwmOneShot::previousPin = -1;
-uint32_t PwmOneShot::lastStartUs = 0;
-uint16_t PwmOneShot::lastDurationUs = 0;
+rmt_item32_t PwmOneShot::txItems[2] = {};
 
 static void releaseRmtPin(int pin)
 {
@@ -48,7 +47,6 @@ bool PwmOneShot::begin(rmt_channel_t channel)
         }
         rmtChannel = channel;
         previousPin = pin;
-        lastDurationUs = 0;
     }
 
     if (head == nullptr) {
@@ -89,25 +87,18 @@ PwmOneShot::~PwmOneShot()
     if (tail == this) tail = prior;
     if (current == this) current = next;
     if (previousPin == pin) {
-        rmt_tx_stop(rmtChannel);
+        // Let an in-flight item finish off-pin and release its driver semaphore.
         releaseRmtPin(pin);
         previousPin = -1;
-        lastDurationUs = 0;
     }
 }
 
 void PwmOneShot::setPulse(uint16_t microseconds)
 {
+    // Zero stops scheduling this output. Leave the current pulse intact;
+    // poll() disconnects the GPIO after TX completion. A positive update
+    // before then cancels the stop without reconnecting an active waveform.
     pulseUs = microseconds > 32767U ? 32767U : microseconds; // RMT duration fields are 15 bits.
-    if (microseconds == 0) {
-        // A no-pulse failsafe must also stop a pulse already in progress.
-        if (registered && previousPin == pin) {
-            rmt_tx_stop(rmtChannel);
-            releaseRmtPin(pin);
-            previousPin = -1;
-            lastDurationUs = 0;
-        }
-    }
 }
 
 void PwmOneShot::poll(bool rfConnected)
@@ -115,19 +106,22 @@ void PwmOneShot::poll(bool rfConnected)
     if (current == nullptr) {
         return;
     }
+    // Pair the driver's write API with its completion semaphore. Low-level
+    // rmt_tx_start() does not acquire it, making driver status appear idle
+    // during transmission. Never switch GPIOs or rewrite items until TX_END.
+    if (rmt_wait_tx_done(rmtChannel, 0) != ESP_OK) {
+        return;
+    }
     const uint32_t nowUs = micros();
-    if (lastDurationUs && (uint32_t)(nowUs - lastStartUs) < lastDurationUs + 10U) {
-        return;
-    }
-    rmt_channel_status_result_t status;
-    if (rmt_get_channel_status(&status) != ESP_OK || status.status[rmtChannel] != RMT_CHANNEL_IDLE) {
-        return;
-    }
 
     PwmOneShot *const start = current;
     PwmOneShot *candidate = start;
     do {
         current = candidate->next;
+        if (previousPin == candidate->pin && candidate->pulseUs == 0) {
+            releaseRmtPin(previousPin);
+            previousPin = -1;
+        }
         if (candidate->pulseUs != 0 &&
             (rfConnected || candidate->failsafeMode != PWMFAILSAFE_NO_PULSES) &&
             (!candidate->hasSent || (uint32_t)(nowUs - candidate->lastPulseUs) >= candidate->periodUs)) {
@@ -143,17 +137,16 @@ void PwmOneShot::poll(bool rfConnected)
                 previousPin = candidate->pin;
             }
 
-            rmt_item32_t items[2] = {};
-            items[0].level0 = 1;
-            items[0].duration0 = candidate->pulseUs;
-            items[0].level1 = 0;
-            items[0].duration1 = 1;
-            if (rmt_fill_tx_items(rmtChannel, items, 2, 0) == ESP_OK &&
-                rmt_tx_start(rmtChannel, true) == ESP_OK) {
-                candidate->lastPulseUs = nowUs;
+            // Keep the buffer alive and unchanged until the asynchronous write
+            // completes. This channel has one producer; the completion check
+            // above guarantees rmt_write_items() can take its semaphore now.
+            txItems[0].level0 = 1;
+            txItems[0].duration0 = candidate->pulseUs;
+            txItems[0].level1 = 0;
+            txItems[0].duration1 = 1;
+            if (rmt_write_items(rmtChannel, txItems, 2, false) == ESP_OK) {
+                candidate->lastPulseUs = micros();
                 candidate->hasSent = true;
-                lastStartUs = nowUs;
-                lastDurationUs = candidate->pulseUs + 1;
             }
             return; // At most one pulse per call.
         }
